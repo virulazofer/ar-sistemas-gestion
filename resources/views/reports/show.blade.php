@@ -5,7 +5,10 @@
                 <h1 class="text-xl font-semibold">{{ $title }}</h1>
                 @if ($note)<p class="ar-muted text-sm">{{ $note }}</p>@endif
             </div>
-            <div class="flex flex-wrap gap-2">
+            <div class="flex flex-wrap items-center gap-2">
+                @if ($type === 'chart-accounts')
+                    <x-page-help topic="chart_accounts" />
+                @endif
                 <a href="{{ route('reports.index') }}" class="ar-btn ar-btn-secondary">Volver</a>
                 @canany(['exports.execute', 'reports.export'])
                     <a href="{{ request()->fullUrlWithQuery(['export' => 'csv']) }}" class="ar-btn ar-btn-secondary">CSV</a>

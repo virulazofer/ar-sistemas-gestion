@@ -185,6 +185,7 @@ test('la sidebar agrupa accesos por area y respeta permisos', function () {
         ->assertSee('ar-sidebar', false)
         ->assertSee('ar-side-group', false)
         ->assertSee('Inicio')
+        ->assertSee('Maestros')
         ->assertSee('Finanzas')
         ->assertSee('Comercial')
         ->assertSee('Operaciones')
@@ -192,8 +193,18 @@ test('la sidebar agrupa accesos por area y respeta permisos', function () {
         ->assertSee('Reportes')
         ->assertSee('Administración')
         ->assertSee(route('clients.index'), false)
+        ->assertSee(route('equipment.index'), false)
+        ->assertSee('>Equipos</span>', false)
         ->assertSee(route('stock.index'), false)
         ->assertSee(route('users.index'), false);
+
+    $equipOnly = makeUserWithPermissions(['dashboard.view', 'equipment.view']);
+    $this->actingAs($equipOnly)
+        ->get(route('dashboard'))
+        ->assertOk()
+        ->assertSee(route('equipment.index'), false)
+        ->assertSee('>Equipos</span>', false)
+        ->assertDontSee(route('clients.index'), false);
 
     $limited = makeUserWithPermissions(['dashboard.view']);
 

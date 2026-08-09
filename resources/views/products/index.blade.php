@@ -5,9 +5,12 @@
                 <h1 class="text-xl font-semibold">Productos</h1>
                 <p class="ar-muted text-sm">Catálogo físico / servicio · stock denormalizado.</p>
             </div>
-            @can('products.create')
-                <a href="{{ route('products.create') }}" class="ar-btn ar-btn-primary">Nuevo producto</a>
-            @endcan
+            <div class="flex flex-wrap items-center gap-2">
+                <x-page-help topic="products" />
+                @can('products.create')
+                    <a href="{{ route('products.create') }}" class="ar-btn ar-btn-primary">Nuevo producto</a>
+                @endcan
+            </div>
         </div>
     </x-slot>
 

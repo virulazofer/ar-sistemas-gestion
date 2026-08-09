@@ -1,8 +1,11 @@
 <x-app-layout>
     <x-slot name="header">
-        <div>
-            <h1 class="text-xl font-semibold">Carga rápida</h1>
-            <p class="ar-muted text-sm">Registrá un ingreso, gasto o transferencia en segundos.</p>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <h1 class="text-xl font-semibold">Carga rápida</h1>
+                <p class="ar-muted text-sm">Registrá un ingreso, gasto o transferencia en segundos.</p>
+            </div>
+            <x-page-help topic="movements.quick" />
         </div>
     </x-slot>
 

@@ -5,9 +5,12 @@
                 <h1 class="text-xl font-semibold">Presupuestos</h1>
                 <p class="ar-muted text-sm">Sin efecto en stock, CC ni finanzas.</p>
             </div>
-            @can('quotations.create')
-                <a href="{{ route('quotations.create') }}" class="ar-btn ar-btn-primary">Nuevo</a>
-            @endcan
+            <div class="flex flex-wrap items-center gap-2">
+                <x-page-help topic="quotations" />
+                @can('quotations.create')
+                    <a href="{{ route('quotations.create') }}" class="ar-btn ar-btn-primary">Nuevo presupuesto</a>
+                @endcan
+            </div>
         </div>
     </x-slot>
     <div class="ar-card overflow-x-auto">

@@ -1,7 +1,12 @@
 <x-app-layout>
     <x-slot name="header">
-        <h1 class="text-xl font-semibold">Reportes</h1>
-        <p class="ar-muted text-sm">Exportables CSV / XLSX · PDF en reportes clave.</p>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <h1 class="text-xl font-semibold">Reportes</h1>
+                <p class="ar-muted text-sm">Exportables CSV / XLSX · PDF en reportes clave.</p>
+            </div>
+            <x-page-help topic="reports" />
+        </div>
     </x-slot>
 
     <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

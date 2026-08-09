@@ -1,10 +1,13 @@
 <x-app-layout>
     <x-slot name="header">
-        <div class="flex items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
             <h1 class="text-xl font-semibold">Cuentas financieras</h1>
-            @can('accounts.create')
-                <a href="{{ route('accounts.create') }}" class="ar-btn ar-btn-primary">Nueva cuenta</a>
-            @endcan
+            <div class="flex flex-wrap items-center gap-2">
+                <x-page-help topic="accounts" />
+                @can('accounts.create')
+                    <a href="{{ route('accounts.create') }}" class="ar-btn ar-btn-primary">Nueva cuenta</a>
+                @endcan
+            </div>
         </div>
     </x-slot>
 

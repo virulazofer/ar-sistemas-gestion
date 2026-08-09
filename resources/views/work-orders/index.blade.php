@@ -5,9 +5,12 @@
                 <h1 class="text-xl font-semibold">Órdenes de trabajo</h1>
                 <p class="ar-muted text-sm">Servicios, reparaciones y soporte.</p>
             </div>
-            @can('work_orders.create')
-                <a href="{{ route('work-orders.create') }}" class="ar-btn ar-btn-primary">Nueva OT</a>
-            @endcan
+            <div class="flex flex-wrap items-center gap-2">
+                <x-page-help topic="work_orders" />
+                @can('work_orders.create')
+                    <a href="{{ route('work-orders.create') }}" class="ar-btn ar-btn-primary">Nueva OT</a>
+                @endcan
+            </div>
         </div>
     </x-slot>
     <div class="ar-card overflow-x-auto">

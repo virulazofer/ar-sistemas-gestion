@@ -5,9 +5,12 @@
                 <h1 class="text-xl font-semibold">Usuarios</h1>
                 <p class="ar-muted text-sm">Alta y administración de usuarios del sistema.</p>
             </div>
-            @can('users.create')
-                <a href="{{ route('users.create') }}" class="ar-btn ar-btn-primary">Nuevo usuario</a>
-            @endcan
+            <div class="flex flex-wrap items-center gap-2">
+                <x-page-help topic="users" />
+                @can('users.create')
+                    <a href="{{ route('users.create') }}" class="ar-btn ar-btn-primary">Nuevo usuario</a>
+                @endcan
+            </div>
         </div>
     </x-slot>
 

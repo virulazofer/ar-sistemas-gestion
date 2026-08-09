@@ -79,3 +79,24 @@ test('pagina completa de busqueda sigue disponible', function () {
         ->assertSee('Full Page Search')
         ->assertSee(route('clients.show', Client::where('name', 'Full Page Search')->first()), false);
 });
+
+test('busqueda sin resultados responde grupos vacios y UI muestra mensaje', function () {
+    $admin = makeAdmin();
+    test()->seed(CurrencySeeder::class);
+
+    $this->actingAs($admin)
+        ->getJson(route('search', ['q' => 'zzzsinmatchzzz']))
+        ->assertOk()
+        ->assertJsonPath('groups.clients', [])
+        ->assertJsonPath('groups.products', [])
+        ->assertJsonPath('groups.suppliers', [])
+        ->assertJsonPath('groups.equipment', [])
+        ->assertJsonPath('groups.work_orders', [])
+        ->assertJsonPath('groups.quotations', [])
+        ->assertJsonPath('groups.sales', []);
+
+    $this->actingAs($admin)
+        ->get(route('dashboard'))
+        ->assertOk()
+        ->assertSee('No se encontraron resultados', false);
+});

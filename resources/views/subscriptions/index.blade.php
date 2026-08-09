@@ -5,7 +5,8 @@
                 <h1 class="text-xl font-semibold">Abonos</h1>
                 <p class="ar-muted text-sm">Servicios recurrentes · cargos idempotentes.</p>
             </div>
-            <div class="flex gap-2">
+            <div class="flex flex-wrap items-center gap-2">
+                <x-page-help topic="subscriptions" />
                 @can('subscriptions.generate')
                     <form method="POST" action="{{ route('subscriptions.generate-due') }}">@csrf<button class="ar-btn ar-btn-secondary">Generar vencidos</button></form>
                 @endcan
