@@ -1,0 +1,91 @@
+*.log
+.DS_Store
+Thumbs.db
+
+# Entornos y secretos
+.env
+.env.*
+!.env.example
+!.env.staging.example
+.env.backup
+.env.production
+.env.staging
+auth.json
+
+# Dependencias
+/vendor
+/node_modules
+
+# Laravel / runtime
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+/storage/logs/*
+!/storage/logs/.gitignore
+/bootstrap/cache/*.php
+!/bootstrap/cache/.gitignore
+
+# IDE / agentes
+.phpactor.json
+/.codex
+/.cursor/
+/.idea
+/.nova
+/.phpunit.cache
+.phpunit.result.cache
+/.vscode
+/.zed
+_ide_helper.php
+Homestead.json
+Homestead.yaml
+
+# SQLite y datos locales
+*.sqlite
+*.sqlite-journal
+/database/*.sqlite
+/database/*.sqlite-journal
+
+# Artefactos de tests / debug
+/test-full.txt
+/storage/logs/topbar-fail*.txt
+/coverage
+/.phpunit.cache
+phpinfo.php
+/public/phpinfo.php
+/public/test.php
+/test.php
+
+# Uploads / imports / exports generados (no versionar contenido de usuarios)
+/storage/app/private/*
+!/storage/app/private/.gitignore
+/storage/app/public/*
+!/storage/app/public/.gitignore
+/storage/app/imports/
+/storage/framework/cache/data/*
+!/storage/framework/cache/data/.gitignore
+/storage/framework/sessions/*
+!/storage/framework/sessions/.gitignore
+/storage/framework/testing/*
+!/storage/framework/testing/.gitignore
+/storage/framework/views/*
+!/storage/framework/views/.gitignore
+
+# Backups y dumps
+*.sql
+*.sql.gz
+*.dump
+/backups/
+/backup/
+
+# Toolchains portables / fuera del proyecto
+/tools/
+C:/CURSOR/tools/
+
+# Fuentes de mapas / caches npm
+npm-debug.log*
+yarn-error.log*
+
+# Nota: public/build SE VERSIONA a propósito para deploy sin Node en el hosting.
+# Recompilar localmente con `npm run build` antes del release.
+/public/fonts-manifest.dev.json
