@@ -120,11 +120,49 @@ test('preview movimientos clasifica verde amarillo rojo y bloquea confirm', func
         ->and($batch->rows_total)->toBeGreaterThan(0)
         ->and($batch->rows_red)->toBeGreaterThan(0)
         ->and($batch->reconciliation_payload['excel']['ingresos_ars'])->toBeGreaterThan(0)
-        ->and($batch->options['confirm_enabled'] ?? true)->toBeFalse();
+        ->and($batch->options['confirm_enabled'] ?? true)->toBeFalse()
+        ->and($batch->preview_payload['root_cause_groups'] ?? null)->not->toBeNull();
+
+    // CC OUT + ingreso debe interpretarse (regla inequívoca), no quedar en rojo complejo
+    $cobro = collect($batch->preview_payload['rows_sample_yellow'] ?? [])
+        ->merge($batch->preview_payload['rows_sample_green'] ?? [])
+        ->first(fn ($r) => ($r['concepto'] ?? '') === 'Cobro CC Lidercar');
+    expect($cobro)->not->toBeNull()
+        ->and($cobro['review_status'] ?? '')->not->toBe('red')
+        ->and((float) ($cobro['interpretation']['cc_payment'] ?? 0))->toBe(10000.0)
+        ->and((float) ($cobro['interpretation']['finance_income'] ?? 0))->toBe(10000.0);
 
     expect(fn () => app(HistoricalMovementsPreviewService::class)->confirm($batch))
         ->toThrow(InvalidArgumentException::class);
 
+    @unlink($path);
+});
+
+test('regla de cuenta aprobada se reaplica al reprocesar', function () {
+    $admin = makeAdmin();
+    $this->actingAs($admin);
+    $path = writeTempXlsx([
+        ['2026', '', '', '', 'INGRESOS', 'EGRESOS', '', 'CC', '', '', 'Merca IN', 'Merca OUT', 'Venta', 'Ut'],
+        ['', '', '', '', '', '', '', 'IN', 'OUT', '', '', '', '', ''],
+        ['FECHA', 'CONCEPTO', 'Cuenta', 'SubCuenta', '', '', '', '', '', '', '', '', '', ''],
+        [46023, 'Gasto cuenta nueva', 'Servicios', 'Brubank Extra', '', 2500, '', '', '', '', '', '', '', ''],
+    ], 'Movimientos');
+
+    $batch = app(HistoricalMovementsPreviewService::class)->analyzePath($path, 'rule-test.xlsx', $admin->id);
+    expect(($batch->preview_payload['masters']['unknown_accounts']['Brubank Extra'] ?? 0))->toBeGreaterThan(0);
+
+    app(\App\Services\Imports\Historical\HistoricalMappingRuleService::class)->approveAccountAlias('Brubank Extra', [
+        'name' => 'Brubank Extra Fernando',
+        'type' => 'bank',
+        'currency' => 'ARS',
+        'holder' => 'fernando',
+        'alias' => 'Brubank Extra',
+        'liability' => false,
+    ]);
+    // Also register in config-like masters via AccountMappingService won't know it — rule resolves it
+    $re = app(HistoricalMovementsPreviewService::class)->reprocess($batch->fresh());
+    $unknown = $re->preview_payload['masters']['unknown_accounts'] ?? [];
+    expect($unknown['Brubank Extra'] ?? null)->toBeNull();
     @unlink($path);
 });
 

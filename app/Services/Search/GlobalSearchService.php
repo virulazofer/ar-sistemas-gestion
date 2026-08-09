@@ -85,9 +85,12 @@ class GlobalSearchService
             $out['products'] = Product::query()
                 ->where(function ($query) use ($like) {
                     $query->where('name', 'like', $like)
+                        ->orWhere('description', 'like', $like)
                         ->orWhere('sku', 'like', $like)
                         ->orWhere('brand', 'like', $like)
-                        ->orWhere('model', 'like', $like);
+                        ->orWhere('model', 'like', $like)
+                        ->orWhere('supplier_code', 'like', $like)
+                        ->orWhere('part_number', 'like', $like);
                 })
                 ->orderBy('name')
                 ->limit($limit)
@@ -96,7 +99,10 @@ class GlobalSearchService
                     'label' => $p->name,
                     'route' => 'products.show',
                     'params' => ['product' => $p->id],
-                    'subtitle' => trim($p->sku.($p->brand ? ' · '.$p->brand : '')),
+                    'subtitle' => trim($p->sku
+                        .($p->supplier_code ? ' · Prov '.$p->supplier_code : '')
+                        .($p->part_number ? ' · PN '.$p->part_number : '')
+                        .($p->brand ? ' · '.$p->brand : '')),
                     'url' => route('products.show', $p),
                 ])
                 ->all();

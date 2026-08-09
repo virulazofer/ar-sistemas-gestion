@@ -56,6 +56,33 @@ class AccountMappingService
         return compact('holders', 'accounts');
     }
 
+    /**
+     * @param  array<string, mixed>  $def
+     */
+    public function ensureAccountFromDef(string $alias, array $def): FinancialAccount
+    {
+        $holder = AccountHolder::query()->where('code', $def['holder'] ?? 'fernando')->first();
+        if (! $holder) {
+            $this->ensurePreviewMasters();
+            $holder = AccountHolder::query()->where('code', $def['holder'] ?? 'fernando')->first();
+        }
+        $currency = Currency::query()->where('code', $def['currency'] ?? 'ARS')->firstOrFail();
+        $type = AccountType::from($def['type'] ?? 'bank');
+
+        return FinancialAccount::query()->updateOrCreate(
+            ['name' => $def['name'] ?? $alias],
+            [
+                'type' => $type->value,
+                'currency_id' => $currency->id,
+                'account_holder_id' => $holder?->id,
+                'is_liability' => (bool) ($def['liability'] ?? $type->isLiability()),
+                'alias' => $def['alias'] ?? $alias,
+                'aliases' => array_values(array_unique(array_filter([$alias, $def['alias'] ?? null]))),
+                'status' => 'active',
+            ]
+        );
+    }
+
     public function resolveAlias(?string $subcuenta): ?array
     {
         $key = trim((string) $subcuenta);

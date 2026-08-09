@@ -72,6 +72,8 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/importaciones/{import}/confirmar', [ImportController::class, 'confirm'])->name('imports.confirm');
         Route::post('/importaciones/{import}/confirmar-catalogo', [HistoricalImportController::class, 'confirmCatalog'])->name('imports.historical.confirm-catalog');
         Route::post('/importaciones/{import}/confirmar-historico', [HistoricalImportController::class, 'confirmMovements'])->name('imports.historical.confirm-movements');
+        Route::post('/importaciones/{import}/reprocesar-historico', [HistoricalImportController::class, 'reprocess'])->name('imports.historical.reprocess');
+        Route::post('/importaciones/{import}/regla-cuenta', [HistoricalImportController::class, 'approveAccountRule'])->name('imports.historical.approve-account');
         Route::post('/importaciones/{import}/revertir', [ImportController::class, 'rollback'])->name('imports.rollback');
     });
     Route::get('/importaciones/{import}', [ImportController::class, 'show'])

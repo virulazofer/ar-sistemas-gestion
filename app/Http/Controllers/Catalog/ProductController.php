@@ -24,19 +24,30 @@ class ProductController extends Controller
     public function index(Request $request): View
     {
         $q = trim((string) $request->get('q', ''));
+        $brand = trim((string) $request->get('brand', ''));
+        $categoryId = $request->integer('product_category_id') ?: null;
+
         $products = Product::query()
             ->with(['category', 'subcategory', 'location'])
             ->when($q !== '', fn ($query) => $query->where(function ($inner) use ($q) {
                 $inner->where('name', 'like', "%{$q}%")
+                    ->orWhere('description', 'like', "%{$q}%")
                     ->orWhere('sku', 'like', "%{$q}%")
                     ->orWhere('brand', 'like', "%{$q}%")
-                    ->orWhere('model', 'like', "%{$q}%");
+                    ->orWhere('model', 'like', "%{$q}%")
+                    ->orWhere('supplier_code', 'like', "%{$q}%")
+                    ->orWhere('part_number', 'like', "%{$q}%");
             }))
+            ->when($brand !== '', fn ($query) => $query->where('brand', $brand))
+            ->when($categoryId, fn ($query) => $query->where('product_category_id', $categoryId))
             ->orderBy('name')
             ->paginate(25)
             ->withQueryString();
 
-        return view('products.index', compact('products', 'q'));
+        $brands = Product::query()->whereNotNull('brand')->where('brand', '!=', '')->distinct()->orderBy('brand')->pluck('brand');
+        $categories = ProductCategory::query()->orderBy('name')->get(['id', 'name']);
+
+        return view('products.index', compact('products', 'q', 'brand', 'categoryId', 'brands', 'categories'));
     }
 
     public function create(): View

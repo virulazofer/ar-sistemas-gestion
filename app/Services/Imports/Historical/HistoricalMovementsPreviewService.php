@@ -18,6 +18,8 @@ class HistoricalMovementsPreviewService
     public function __construct(
         private readonly AccountMappingService $accounts,
         private readonly ClientDetectionService $clients,
+        private readonly HistoricalRootCauseAnalyzer $rootCauses,
+        private readonly HistoricalMappingRuleService $rules,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -43,6 +45,7 @@ class HistoricalMovementsPreviewService
         Storage::disk('local')->put($storedPath, file_get_contents($absolutePath));
 
         $accountMasters = $this->accounts->ensurePreviewMasters();
+        $this->rules->ensureUnequivocalRules();
         $preview = $this->buildPreview(
             Storage::disk('local')->path($storedPath),
             $cutoverDate,
@@ -76,17 +79,35 @@ class HistoricalMovementsPreviewService
                 // Keep payload bounded for DB: summary + samples + masters
                 'summary' => $preview['summary'],
                 'reconciliation' => $preview['reconciliation'],
+                'difference_attribution' => $preview['difference_attribution'],
+                'root_cause_groups' => $preview['root_cause_groups'],
                 'masters' => $preview['masters'],
                 'subscriptions_detected' => $preview['subscriptions_detected'],
+                'applied_rules' => $preview['applied_rules'],
                 'rows_sample_green' => array_slice($preview['rows_by_status']['green'], 0, 30),
                 'rows_sample_yellow' => array_slice($preview['rows_by_status']['yellow'], 0, 40),
                 'rows_sample_red' => array_slice($preview['rows_by_status']['red'], 0, 60),
                 'rows_all_path' => $preview['rows_all_path'],
                 'confirm_blocked' => true,
-                'confirm_blocked_reason' => 'Etapa 11E-1: confirmación definitiva deshabilitada hasta autorización expresa.',
+                'confirm_blocked_reason' => 'Etapa 11E: confirmación definitiva de movimientos deshabilitada hasta autorización expresa.',
             ],
-            'classification_summary' => $preview['summary'],
-            'reconciliation_payload' => $preview['reconciliation'],
+            'classification_summary' => array_merge($preview['summary'], [
+                'root_cause_groups' => [
+                    'yellow' => array_map(fn ($g) => [
+                        'cause' => $g['cause'],
+                        'label' => $g['label'],
+                        'count' => $g['count'],
+                    ], $preview['root_cause_groups']['yellow'] ?? []),
+                    'red' => array_map(fn ($g) => [
+                        'cause' => $g['cause'],
+                        'label' => $g['label'],
+                        'count' => $g['count'],
+                    ], $preview['root_cause_groups']['red'] ?? []),
+                ],
+            ]),
+            'reconciliation_payload' => array_merge($preview['reconciliation'], [
+                'difference_attribution' => $preview['difference_attribution'],
+            ]),
             'error_summary' => ['note' => 'Preview only — no persist operations'],
             'options' => [
                 'cutover_date' => $cutoverDate,
@@ -121,6 +142,81 @@ class HistoricalMovementsPreviewService
         throw new InvalidArgumentException(
             'Confirmación de movimientos históricos bloqueada en esta etapa. Se requiere autorización expresa.'
         );
+    }
+
+    /**
+     * Reprocesa un preview existente aplicando reglas activas (sin confirmar importación).
+     */
+    public function reprocess(ImportBatch $batch): ImportBatch
+    {
+        if ($batch->importer_kind !== 'historical_movements') {
+            throw new InvalidArgumentException('Solo lotes históricos pueden reprocesarse.');
+        }
+        if (! $batch->stored_path) {
+            throw new InvalidArgumentException('El lote no tiene archivo almacenado.');
+        }
+
+        $absolute = Storage::disk($batch->disk ?: 'local')->path($batch->stored_path);
+        $this->rules->ensureUnequivocalRules();
+        $accountMasters = $this->accounts->ensurePreviewMasters();
+        $preview = $this->buildPreview(
+            $absolute,
+            $batch->cutover_date?->toDateString() ?? (string) config('historical_import.cutover_date'),
+            $batch->period_from?->toDateString() ?? (string) config('historical_import.period_from'),
+            $batch->period_to?->toDateString() ?? (string) config('historical_import.period_to'),
+            $accountMasters
+        );
+
+        $batch->update([
+            'rows_total' => $preview['summary']['rows_read'],
+            'rows_valid' => $preview['summary']['green'] + $preview['summary']['yellow'],
+            'rows_invalid' => $preview['summary']['red'],
+            'rows_duplicate' => $preview['summary']['excluded'],
+            'rows_green' => $preview['summary']['green'],
+            'rows_yellow' => $preview['summary']['yellow'],
+            'rows_red' => $preview['summary']['red'],
+            'preview_payload' => [
+                'summary' => $preview['summary'],
+                'reconciliation' => $preview['reconciliation'],
+                'difference_attribution' => $preview['difference_attribution'],
+                'root_cause_groups' => $preview['root_cause_groups'],
+                'masters' => $preview['masters'],
+                'subscriptions_detected' => $preview['subscriptions_detected'],
+                'applied_rules' => $preview['applied_rules'],
+                'rows_sample_green' => array_slice($preview['rows_by_status']['green'], 0, 30),
+                'rows_sample_yellow' => array_slice($preview['rows_by_status']['yellow'], 0, 40),
+                'rows_sample_red' => array_slice($preview['rows_by_status']['red'], 0, 60),
+                'rows_all_path' => $preview['rows_all_path'],
+                'confirm_blocked' => true,
+                'confirm_blocked_reason' => 'Etapa 11E: confirmación definitiva de movimientos deshabilitada hasta autorización expresa.',
+                'reprocessed_at' => now()->toDateTimeString(),
+            ],
+            'classification_summary' => array_merge($preview['summary'], [
+                'root_cause_groups' => [
+                    'yellow' => array_map(fn ($g) => [
+                        'cause' => $g['cause'], 'label' => $g['label'], 'count' => $g['count'],
+                    ], $preview['root_cause_groups']['yellow'] ?? []),
+                    'red' => array_map(fn ($g) => [
+                        'cause' => $g['cause'], 'label' => $g['label'], 'count' => $g['count'],
+                    ], $preview['root_cause_groups']['red'] ?? []),
+                ],
+            ]),
+            'reconciliation_payload' => array_merge($preview['reconciliation'], [
+                'difference_attribution' => $preview['difference_attribution'],
+            ]),
+            'options' => array_merge($batch->options ?? [], [
+                'confirm_enabled' => false,
+                'reprocessed_at' => now()->toDateTimeString(),
+            ]),
+        ]);
+
+        $this->audit->log('historical_movements_reprocessed', $batch, null, [
+            'green' => $batch->rows_green,
+            'yellow' => $batch->rows_yellow,
+            'red' => $batch->rows_red,
+        ], 'Preview histórico reprocesado con reglas');
+
+        return $batch->fresh();
     }
 
     /**
@@ -201,7 +297,7 @@ class HistoricalMovementsPreviewService
                 $categories[$cuenta] = ($categories[$cuenta] ?? 0) + 1;
             }
 
-            $accountDef = $this->accounts->resolveAlias($subcuenta);
+            $accountDef = $this->rules->resolveAccountAlias($subcuenta, $this->accounts);
             if ($accountDef) {
                 $financialSeen[$accountDef['alias'] ?? $subcuenta] = ($financialSeen[$accountDef['alias'] ?? $subcuenta] ?? 0) + 1;
             } elseif ($subcuenta !== '' && ! $this->looksLikeClientSubcuenta($subcuenta, $cuenta)) {
@@ -243,10 +339,6 @@ class HistoricalMovementsPreviewService
 
             $interpreted = $this->interpret($classification, $cuenta, $subcuenta, $amounts, $accountDef, $client);
 
-            if (strcasecmp($cuenta, 'Abonos') === 0 && $client) {
-                $subscriptionBuckets[$client] = ($subscriptionBuckets[$client] ?? 0) + 1;
-            }
-
             $row = [
                 'source_file' => basename($path),
                 'sheet' => $sheetName,
@@ -260,6 +352,7 @@ class HistoricalMovementsPreviewService
                 'amounts' => $amounts,
                 'review_status' => $classification['status']->value,
                 'flags' => $classification['flags'],
+                'root_cause' => null,
                 'proposed_scope' => $classification['scope'],
                 'scope_ambiguous' => $classification['scope_ambiguous'],
                 'client' => $client,
@@ -270,6 +363,11 @@ class HistoricalMovementsPreviewService
                     'fila' => $sourceRow,
                 ],
             ];
+            $row['root_cause'] = $this->rootCauses->inferRootCause($row);
+
+            if (strcasecmp($cuenta, 'Abonos') === 0 && $client) {
+                $subscriptionBuckets[$client] = ($subscriptionBuckets[$client] ?? 0) + 1;
+            }
 
             $rows[] = $row;
             $byStatus[$classification['status']->value][] = $row;
@@ -344,15 +442,31 @@ class HistoricalMovementsPreviewService
             'cc_out' => round($reconciliation['excel']['cc_out_ars'] - $reconciliation['ar_sistemas_preview']['cc_payments'], 2),
         ];
 
+        $rootCauseGroups = $this->rootCauses->groupByRootCause($rows);
+        $differenceAttribution = $this->rootCauses->attributeDifferences($rows);
+
         $allPath = 'imports/previews/'.Str::uuid().'.json';
         Storage::disk('local')->put($allPath, json_encode([
             'summary' => $summary,
             'rows' => $rows,
+            'root_cause_groups' => $rootCauseGroups,
+            'difference_attribution' => $differenceAttribution,
         ], JSON_UNESCAPED_UNICODE));
+
+        $appliedRules = array_map(fn ($r) => [
+            'id' => $r->id,
+            'type' => $r->rule_type,
+            'key' => $r->match_key,
+            'notes' => $r->notes,
+            'times_applied' => $r->times_applied,
+        ], $this->rules->activeRules());
 
         return [
             'summary' => $summary,
             'reconciliation' => $reconciliation,
+            'difference_attribution' => $differenceAttribution,
+            'root_cause_groups' => $rootCauseGroups,
+            'applied_rules' => $appliedRules,
             'masters' => [
                 'account_holders' => $accountMasters['holders'],
                 'financial_accounts' => $accountMasters['accounts'],
@@ -406,7 +520,27 @@ class HistoricalMovementsPreviewService
 
         $isComplex = $filled >= 3
             || (($amounts['venta'] ?? 0) > 0 && (($amounts['cc_in'] ?? 0) > 0 || ($amounts['merca_out'] ?? 0) > 0 || ($amounts['merca_in'] ?? 0) > 0))
-            || (($amounts['cc_out'] ?? 0) > 0 && ($amounts['ingresos'] ?? 0) > 0);
+            || (
+                ($amounts['merca_in'] ?? 0) > 0
+                && (($amounts['cc_out'] ?? 0) > 0 || ($amounts['ingresos'] ?? 0) > 0)
+                && ($amounts['venta'] ?? 0) > 0
+            );
+
+        // Regla inequívoca: CC OUT + ingreso (sin venta/merca compleja) NO es operación compleja.
+        $ccWithIncomeOnly = ($amounts['cc_out'] ?? 0) > 0
+            && ($amounts['ingresos'] ?? 0) > 0
+            && ($amounts['venta'] ?? 0) <= 0
+            && ($amounts['merca_in'] ?? 0) <= 0
+            && ($amounts['merca_out'] ?? 0) <= 0
+            && ($amounts['cc_in'] ?? 0) <= 0;
+
+        if ($ccWithIncomeOnly && $this->rules->hasInterpretationRule('cc_out_with_income')) {
+            $flags[] = 'cc_combinado_ingreso';
+            $isComplex = false;
+        } elseif (($amounts['cc_out'] ?? 0) > 0 && ($amounts['ingresos'] ?? 0) > 0 && ! $isComplex) {
+            // Sin regla aún: marcar para revisión pero no forzar rojo por eso solo
+            $flags[] = 'cc_combinado_ingreso';
+        }
 
         if ($isComplex) {
             $flags[] = 'operacion_compleja';
@@ -438,13 +572,28 @@ class HistoricalMovementsPreviewService
 
         $status = ImportReviewStatus::Green;
         if (in_array('operacion_compleja', $flags, true)
-            || in_array('fecha_sospechosa', $flags, true)
+            || (in_array('fecha_sospechosa', $flags, true) && ! $ccWithIncomeOnly)
             || in_array('cliente_ambiguo', $flags, true)
             || (($amounts['venta'] ?? 0) > 0 && $filled > 1)
         ) {
             $status = ImportReviewStatus::Red;
         } elseif ($flags !== []) {
             $status = ImportReviewStatus::Yellow;
+        }
+
+        // Fecha sospechosa sola → rojo; si viene con otros flags amarillos y no compleja, rojo igual
+        if (in_array('fecha_sospechosa', $flags, true) && $status !== ImportReviewStatus::Red) {
+            $status = ImportReviewStatus::Red;
+        }
+
+        // CC combinado con ingreso (regla inequívoca): Amarillo, interpretable
+        if (in_array('cc_combinado_ingreso', $flags, true) && ! in_array('operacion_compleja', $flags, true)) {
+            if ($status === ImportReviewStatus::Green) {
+                $status = ImportReviewStatus::Yellow;
+            }
+            if ($status === ImportReviewStatus::Red && ! in_array('fecha_sospechosa', $flags, true) && ! in_array('cliente_ambiguo', $flags, true)) {
+                $status = ImportReviewStatus::Yellow;
+            }
         }
 
         // Simple single-leg income/expense with known account → can stay green even with category default
@@ -496,6 +645,19 @@ class HistoricalMovementsPreviewService
             $out['kind'] = 'complex';
             $out['notes'][] = 'OPERACIÓN COMPLEJA — revisión manual; no confirmar automáticamente.';
             $out['would_generate'][] = 'Requiere mapping humano (venta/CC/cobro/merca).';
+
+            return $out;
+        }
+
+        if (in_array('cc_combinado_ingreso', $classification['flags'], true)
+            && $this->rules->hasInterpretationRule('cc_out_with_income')
+        ) {
+            $out['kind'] = 'cc_payment_with_cash';
+            $out['finance_income'] = $amounts['ingresos'] ?? 0;
+            $out['cc_payment'] = $amounts['cc_out'] ?? 0;
+            $out['would_generate'][] = 'Ingreso financiero '.$out['finance_income'].' en '.($accountDef['name'] ?? $subcuenta);
+            $out['would_generate'][] = 'CC cobro '.$out['cc_payment'].' vinculado (sin duplicar caja) → '.($client ?? '?');
+            $out['notes'][] = 'Regla inequívoca aplicada: CC OUT + ingreso = un solo impacto de caja.';
 
             return $out;
         }
@@ -586,8 +748,9 @@ class HistoricalMovementsPreviewService
 
     private function looksLikeClientSubcuenta(string $subcuenta, string $cuenta): bool
     {
-        if ($cuenta === 'CC') {
-            return true;
+        // En filas CC / Ventas / Abonos la SubCuenta suele ser el cliente, no la caja.
+        if (! in_array($cuenta, ['CC', 'Ventas', 'Abonos'], true)) {
+            return false;
         }
         $financial = config('historical_import.financial_aliases', []);
 

@@ -94,4 +94,49 @@ class HistoricalImportController extends Controller
 
         return back();
     }
+
+    public function reprocess(ImportBatch $import): RedirectResponse
+    {
+        try {
+            $this->movements->reprocess($import);
+        } catch (\Throwable $e) {
+            return back()->withErrors(['reprocess' => $e->getMessage()]);
+        }
+
+        return back()->with('status', 'Preview reprocesado con reglas activas (sin importar movimientos).');
+    }
+
+    public function approveAccountRule(Request $request, ImportBatch $import): RedirectResponse
+    {
+        $data = $request->validate([
+            'excel_alias' => ['required', 'string', 'max:80'],
+            'name' => ['required', 'string', 'max:120'],
+            'type' => ['required', 'in:cash,bank,wallet,credit_card,other'],
+            'currency' => ['required', 'in:ARS,USD'],
+            'holder' => ['required', 'in:fernando,gabi'],
+            'liability' => ['nullable', 'boolean'],
+        ]);
+
+        app(\App\Services\Imports\Historical\HistoricalMappingRuleService::class)->approveAccountAlias(
+            $data['excel_alias'],
+            [
+                'name' => $data['name'],
+                'type' => $data['type'],
+                'currency' => $data['currency'],
+                'holder' => $data['holder'],
+                'alias' => $data['excel_alias'],
+                'liability' => (bool) ($data['liability'] ?? ($data['type'] === 'credit_card')),
+            ]
+        );
+
+        // Ensure masters exist then reprocess
+        app(\App\Services\Imports\Historical\AccountMappingService::class)->ensurePreviewMasters();
+        try {
+            $this->movements->reprocess($import);
+        } catch (\Throwable $e) {
+            return back()->withErrors(['reprocess' => 'Regla guardada pero falló el reproceso: '.$e->getMessage()]);
+        }
+
+        return back()->with('status', "Regla {$data['excel_alias']} aprobada y aplicada a filas compatibles.");
+    }
 }

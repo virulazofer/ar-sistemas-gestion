@@ -24,6 +24,7 @@
     <groups>
         <exclude>
             <group>mysql</group>
+            <group>real-preview</group>
         </exclude>
     </groups>
     <php>
