@@ -396,6 +396,79 @@ class InventoryService
         return $this->fifoOutbound($product, InventoryMovementType::AdjustmentOut, $data);
     }
 
+    /**
+     * Ajuste de apertura auditado (stock inicial). No edita saldos directo.
+     */
+    public function openingAdjustmentIn(Product $product, array $data): InventoryMovement
+    {
+        $reason = trim((string) ($data['reason'] ?? ''));
+        if ($reason === '') {
+            throw new InvalidArgumentException('El ajuste de apertura requiere motivo.');
+        }
+
+        return DB::transaction(function () use ($product, $data, $reason) {
+            $product = $this->lockPhysicalProduct($product->id);
+            $qty = $this->positiveQty($data['quantity'] ?? null);
+            $location = $this->resolveLocation($data['inventory_location_id'] ?? $product->inventory_location_id);
+            $costs = $this->resolveCosts(array_merge($data, [
+                'unit_cost' => $data['unit_cost'] ?? '0',
+                'currency_code' => $data['currency_code'] ?? 'USD',
+            ]));
+
+            $lot = InventoryLot::query()->create([
+                'product_id' => $product->id,
+                'inventory_location_id' => $location->id,
+                'received_at' => $data['received_at'] ?? ($data['movement_date'] ?? now()),
+                'qty_received' => $qty,
+                'qty_remaining' => $qty,
+                'unit_cost' => $costs['unit_cost'],
+                'currency_id' => $costs['currency_id'],
+                'exchange_rate_id' => $costs['exchange_rate_id'],
+                'exchange_rate_value' => $costs['exchange_rate_value'],
+                'unit_cost_ars' => $costs['unit_cost_ars'],
+                'unit_cost_usd' => $costs['unit_cost_usd'],
+                'status' => InventoryLotStatus::Open,
+                'notes' => 'Ajuste de apertura: '.$reason,
+            ]);
+
+            $movement = $this->createMovement($product, InventoryMovementType::OpeningIn, [
+                'quantity' => $qty,
+                'reason' => $reason,
+                'notes' => $data['notes'] ?? null,
+                'inventory_location_id' => $location->id,
+                'inventory_lot_id' => $lot->id,
+                'movement_date' => $data['movement_date'] ?? now()->toDateString(),
+                'unit_cost' => $costs['unit_cost'],
+                'currency_id' => $costs['currency_id'],
+                'exchange_rate_value' => $costs['exchange_rate_value'],
+                'total_cost' => Money::normalize(bcmul($qty, $costs['unit_cost'], 10), 6),
+                'total_cost_ars' => Money::normalize(bcmul($qty, $costs['unit_cost_ars'], 10), 2),
+                'total_cost_usd' => Money::normalize(bcmul($qty, $costs['unit_cost_usd'], 10), 2),
+            ]);
+
+            $this->balances->applyDelta($product, $movement->signed_qty_on_hand, '0');
+            $this->audit->log('inventory_opening_in', $movement, null, [
+                'product_id' => $product->id,
+                'qty' => $qty,
+                'reason' => $reason,
+            ], 'Ajuste de apertura de stock (+)');
+
+            return $movement->fresh(['lot']);
+        });
+    }
+
+    public function openingAdjustmentOut(Product $product, array $data): InventoryMovement
+    {
+        $reason = trim((string) ($data['reason'] ?? ''));
+        if ($reason === '') {
+            throw new InvalidArgumentException('El ajuste de apertura requiere motivo.');
+        }
+
+        return $this->fifoOutbound($product, InventoryMovementType::OpeningOut, array_merge($data, [
+            'reason' => $reason,
+        ]));
+    }
+
     public function reserve(Product $product, array $data): InventoryMovement
     {
         return DB::transaction(function () use ($product, $data) {

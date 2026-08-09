@@ -57,7 +57,15 @@ class CategorySeeder extends Seeder
                 'name' => 'Ingresos profesionales',
                 'scope' => 'professional',
                 'chart' => $incomeProfessional,
-                'subs' => ['Ventas', 'Servicios', 'Abonos', 'Otros'],
+                'subs' => ['Ventas', 'Servicios', 'Abonos', 'Remotos', 'Otros'],
+            ],
+            [
+                'name' => 'Remotos',
+                'scope' => 'professional',
+                'chart' => $incomeProfessional,
+                'subs' => [],
+                'excel_name' => 'Remotos',
+                'default_scope' => 'professional',
             ],
         ];
 
@@ -68,6 +76,8 @@ class CategorySeeder extends Seeder
                     'chart_account_id' => $def['chart']?->id,
                     'is_active' => true,
                     'sort_order' => ($i + 1) * 10,
+                    'excel_name' => $def['excel_name'] ?? $def['name'],
+                    'default_scope' => $def['default_scope'] ?? $def['scope'],
                 ]
             );
 

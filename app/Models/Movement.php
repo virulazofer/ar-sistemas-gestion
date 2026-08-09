@@ -40,6 +40,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'document_id',
     'import_batch_id',
     'external_id',
+    'is_opening_adjustment',
+    'source_sheet',
+    'source_row',
+    'source_payload',
 ])]
 class Movement extends Model
 {
@@ -56,6 +60,8 @@ class Movement extends Model
             'amount_ars' => 'decimal:2',
             'amount_usd' => 'decimal:2',
             'voided_at' => 'datetime',
+            'is_opening_adjustment' => 'boolean',
+            'source_payload' => 'array',
         ];
     }
 

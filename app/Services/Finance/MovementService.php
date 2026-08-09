@@ -88,7 +88,20 @@ class MovementService
                 'status' => MovementStatus::Posted,
                 'client_id' => $data['client_id'] ?? null,
                 'supplier_id' => $data['supplier_id'] ?? null,
+                'is_opening_adjustment' => (bool) ($data['is_opening_adjustment'] ?? false),
+                'source_sheet' => $data['source_sheet'] ?? null,
+                'source_row' => $data['source_row'] ?? null,
+                'source_payload' => $data['source_payload'] ?? null,
+                'import_batch_id' => $data['import_batch_id'] ?? null,
+                'external_id' => $data['external_id'] ?? null,
             ]);
+
+            if (! empty($data['is_opening_adjustment'])) {
+                $reason = trim((string) ($data['opening_reason'] ?? $data['description'] ?? ''));
+                if ($reason === '') {
+                    throw new InvalidArgumentException('El ajuste de apertura financiero requiere motivo.');
+                }
+            }
 
             if (! empty($data['force_fail'])) {
                 throw new RuntimeException('Falla simulada en movimiento financiero.');

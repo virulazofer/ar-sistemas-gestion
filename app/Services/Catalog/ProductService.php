@@ -102,6 +102,7 @@ class ProductService
         return [
             'sku' => $sku,
             'supplier_code' => $data['supplier_code'] ?? null,
+            'part_number' => $data['part_number'] ?? null,
             'name' => $name,
             'description' => $data['description'] ?? null,
             'product_category_id' => $data['product_category_id'] ?? null,
@@ -111,6 +112,7 @@ class ProductService
             'unit' => $data['unit'] ?? 'u',
             'type' => $type->value,
             'requires_serial' => (bool) ($data['requires_serial'] ?? false),
+            'tracks_units' => (bool) ($data['tracks_units'] ?? false),
             'status' => $data['status'] ?? Product::STATUS_ACTIVE,
             'stock_min' => $data['stock_min'] ?? 0,
             'stock_max' => $data['stock_max'] ?? null,

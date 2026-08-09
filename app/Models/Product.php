@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'sku',
     'supplier_code',
+    'part_number',
     'name',
     'description',
     'product_category_id',
@@ -21,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'unit',
     'type',
     'requires_serial',
+    'tracks_units',
     'status',
     'stock_min',
     'stock_max',
@@ -28,6 +30,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'qty_on_hand',
     'qty_reserved',
     'notes',
+    'reference_cost_usd',
+    'tax_indicator',
+    'internal_tax',
+    'list_price_date',
+    'default_supplier_id',
+    'supplier_comments',
     'import_batch_id',
     'external_id',
 ])]
@@ -42,10 +50,14 @@ class Product extends Model
         return [
             'type' => ProductType::class,
             'requires_serial' => 'boolean',
+            'tracks_units' => 'boolean',
             'stock_min' => 'decimal:4',
             'stock_max' => 'decimal:4',
             'qty_on_hand' => 'decimal:4',
             'qty_reserved' => 'decimal:4',
+            'reference_cost_usd' => 'decimal:4',
+            'internal_tax' => 'decimal:4',
+            'list_price_date' => 'date',
         ];
     }
 
@@ -77,6 +89,21 @@ class Product extends Model
     public function serials(): HasMany
     {
         return $this->hasMany(InventorySerial::class);
+    }
+
+    public function units(): HasMany
+    {
+        return $this->hasMany(InventoryUnit::class);
+    }
+
+    public function supplierCodes(): HasMany
+    {
+        return $this->hasMany(ProductSupplierCode::class);
+    }
+
+    public function defaultSupplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class, 'default_supplier_id');
     }
 
     public function isActive(): bool

@@ -13,6 +13,8 @@ enum InventoryMovementType: string
     case Reserve = 'reserve';
     case Release = 'release';
     case Consume = 'consume';
+    case OpeningIn = 'opening_in';
+    case OpeningOut = 'opening_out';
 
     public function label(): string
     {
@@ -26,6 +28,8 @@ enum InventoryMovementType: string
             self::Reserve => 'Reserva',
             self::Release => 'Liberación de reserva',
             self::Consume => 'Consumo',
+            self::OpeningIn => 'Ajuste de apertura (+)',
+            self::OpeningOut => 'Ajuste de apertura (−)',
         };
     }
 
@@ -40,8 +44,8 @@ enum InventoryMovementType: string
     public function onHandSign(): int
     {
         return match ($this) {
-            self::Receipt, self::AdjustmentIn, self::TransferIn => 1,
-            self::Issue, self::AdjustmentOut, self::TransferOut, self::Consume => -1,
+            self::Receipt, self::AdjustmentIn, self::TransferIn, self::OpeningIn => 1,
+            self::Issue, self::AdjustmentOut, self::TransferOut, self::Consume, self::OpeningOut => -1,
             self::Reserve, self::Release => 0,
         };
     }
@@ -62,6 +66,7 @@ enum InventoryMovementType: string
             self::AdjustmentOut,
             self::TransferOut,
             self::Consume,
+            self::OpeningOut,
         ], true);
     }
 
@@ -71,6 +76,12 @@ enum InventoryMovementType: string
             self::Receipt,
             self::AdjustmentIn,
             self::TransferIn,
+            self::OpeningIn,
         ], true);
+    }
+
+    public function isOpeningAdjustment(): bool
+    {
+        return $this === self::OpeningIn || $this === self::OpeningOut;
     }
 }

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['name', 'scope', 'chart_account_id', 'is_active', 'sort_order', 'import_batch_id'])]
+#[Fillable(['name', 'scope', 'default_scope', 'excel_name', 'chart_account_id', 'is_active', 'sort_order', 'import_batch_id'])]
 class Category extends Model
 {
     protected function casts(): array

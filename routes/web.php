@@ -8,6 +8,7 @@ use App\Http\Controllers\Equipment\EquipmentTypeController;
 use App\Http\Controllers\Inventory\StockController;
 use App\Http\Controllers\Purchases\PurchaseController;
 use App\Http\Controllers\Dashboard\OperationsDashboardController;
+use App\Http\Controllers\Imports\HistoricalImportController;
 use App\Http\Controllers\Imports\ImportController;
 use App\Http\Controllers\Quotations\QuotationController;
 use App\Http\Controllers\Reports\ReportController;
@@ -65,7 +66,12 @@ Route::middleware(['auth'])->group(function () {
     Route::middleware('permission:imports.execute')->group(function () {
         Route::get('/importaciones/crear', [ImportController::class, 'create'])->name('imports.create');
         Route::post('/importaciones', [ImportController::class, 'store'])->name('imports.store');
+        Route::get('/importaciones/historico', [HistoricalImportController::class, 'create'])->name('imports.historical.create');
+        Route::post('/importaciones/historico/catalogo', [HistoricalImportController::class, 'storeCatalog'])->name('imports.historical.catalog');
+        Route::post('/importaciones/historico/movimientos', [HistoricalImportController::class, 'storeMovements'])->name('imports.historical.movements');
         Route::post('/importaciones/{import}/confirmar', [ImportController::class, 'confirm'])->name('imports.confirm');
+        Route::post('/importaciones/{import}/confirmar-catalogo', [HistoricalImportController::class, 'confirmCatalog'])->name('imports.historical.confirm-catalog');
+        Route::post('/importaciones/{import}/confirmar-historico', [HistoricalImportController::class, 'confirmMovements'])->name('imports.historical.confirm-movements');
         Route::post('/importaciones/{import}/revertir', [ImportController::class, 'rollback'])->name('imports.rollback');
     });
     Route::get('/importaciones/{import}', [ImportController::class, 'show'])

@@ -15,9 +15,12 @@
             <input type="file" name="file" class="ar-input" accept=".csv,.xlsx,.xls,.txt" required>
         </div>
         <p class="ar-muted text-sm">No se inserta nada hasta confirmar la vista previa. Duplicados se detectan (CUIT/DNI, SKU, external_id).</p>
-        <div class="flex justify-end gap-2">
-            <a href="{{ route('imports.index') }}" class="ar-btn ar-btn-secondary">Cancelar</a>
-            <button class="ar-btn ar-btn-primary">Analizar</button>
+        <div class="flex justify-between gap-2">
+            <a href="{{ route('imports.historical.create') }}" class="ar-btn ar-btn-secondary">Histórico / catálogo proveedor</a>
+            <div class="flex gap-2">
+                <a href="{{ route('imports.index') }}" class="ar-btn ar-btn-secondary">Cancelar</a>
+                <button class="ar-btn ar-btn-primary">Analizar</button>
+            </div>
         </div>
     </form>
 </x-app-layout>

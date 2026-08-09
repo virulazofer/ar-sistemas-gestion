@@ -12,6 +12,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'name',
     'type',
     'currency_id',
+    'account_holder_id',
+    'is_liability',
+    'alias',
+    'aliases',
     'status',
     'external_identifier',
     'description',
@@ -23,6 +27,8 @@ class FinancialAccount extends Model
     {
         return [
             'type' => AccountType::class,
+            'is_liability' => 'boolean',
+            'aliases' => 'array',
             'cached_balance' => 'decimal:2',
         ];
     }
@@ -30,6 +36,11 @@ class FinancialAccount extends Model
     public function currency(): BelongsTo
     {
         return $this->belongsTo(Currency::class);
+    }
+
+    public function holder(): BelongsTo
+    {
+        return $this->belongsTo(AccountHolder::class, 'account_holder_id');
     }
 
     public function movements(): HasMany

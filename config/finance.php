@@ -21,6 +21,7 @@ return [
         'cash' => 'Efectivo',
         'bank' => 'Banco',
         'wallet' => 'Billetera',
+        'credit_card' => 'Tarjeta de crédito',
         'other' => 'Otra',
     ],
 

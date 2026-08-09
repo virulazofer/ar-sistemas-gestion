@@ -57,6 +57,14 @@ class ImportController extends Controller
 
     public function confirm(ImportBatch $import): RedirectResponse
     {
+        if (in_array($import->importer_kind, ['historical_movements', 'supplier_catalog'], true)) {
+            return back()->withErrors([
+                'confirm' => $import->importer_kind === 'historical_movements'
+                    ? 'Los movimientos históricos no se confirman desde este botón (etapa 11E-1 bloqueada).'
+                    : 'Usá “Confirmar catálogo” para productos con stock 0.',
+            ]);
+        }
+
         try {
             $this->imports->confirm($import);
         } catch (\Throwable $e) {
