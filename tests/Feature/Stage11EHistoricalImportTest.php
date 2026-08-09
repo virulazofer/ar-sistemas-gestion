@@ -245,3 +245,49 @@ test('idempotencia por file hash en import batch', function () {
     expect(ImportBatch::query()->where('file_hash', $h1)->count())->toBe(2);
     @unlink($path);
 });
+
+test('decision de fecha corregida y venta compleja reducen rojos en preview', function () {
+    $admin = makeAdmin();
+    $this->actingAs($admin);
+    $path = writeTempXlsx([
+        ['2026', '', '', '', 'INGRESOS', 'EGRESOS', '', 'CC', '', '', 'Merca IN', 'Merca OUT', 'Venta', 'Ut'],
+        ['', '', '', '', '', '', '', 'IN', 'OUT', '', '', '', '', ''],
+        ['FECHA', 'CONCEPTO', 'Cuenta', 'SubCuenta', '', '', '', '', '', '', '', '', '', ''],
+        [44927, 'Fecha 2025', 'Servicios', 'FT', '', 100, '', '', '', '', '', '', '', ''], // 2025-01-01 approx
+        [46025, 'Venta compleja', 'Ventas', 'Lidercar', '', '', '', 50000, 20000, '', '', 10000, 80000, 5000],
+        [46026, 'VISA resumen', 'VISA', 'Patagonia', '', '', '', '', '', 12000, '', '', '', ''],
+    ], 'Movimientos');
+
+    $batch = app(HistoricalMovementsPreviewService::class)->analyzePath($path, 'resolve-test.xlsx', $admin->id);
+    $beforeRed = (int) $batch->rows_red;
+    expect($beforeRed)->toBeGreaterThan(0);
+
+    $resolution = app(\App\Services\Imports\Historical\HistoricalResolutionService::class);
+    $rows = $resolution->loadAllRows($batch);
+    $dateRow = collect($rows)->first(fn ($r) => ($r['concepto'] ?? '') === 'Fecha 2025');
+    $complexRow = collect($rows)->first(fn ($r) => ($r['concepto'] ?? '') === 'Venta compleja');
+    $cardRow = collect($rows)->first(fn ($r) => ($r['concepto'] ?? '') === 'VISA resumen');
+
+    $resolution->decideDate($batch, (int) $dateRow['source_row'], 'correct', '2026-01-01');
+    $resolution->decideComplexSale($batch, (int) $complexRow['source_row'], [
+        'venta' => 80000,
+        'cobro' => 0,
+        'cc_charge' => 50000,
+        'cc_payment' => 20000,
+        'merca_out' => 10000,
+        'merca_in' => 0,
+        'utilidad' => 5000,
+        'finance_income' => 0,
+    ]);
+    $resolution->decideCard($batch, (int) $cardRow['source_row'], 'statement_payment');
+    $resolution->decideScopeBulk($batch, [(int) collect($rows)->first(fn ($r) => ($r['concepto'] ?? '') === 'Fecha 2025')['source_row']], 'professional');
+
+    $after = $resolution->reprocessWithEvolution($batch->fresh());
+    expect((int) $after->rows_red)->toBeLessThan($beforeRed);
+    expect($after->options['evolution']['before']['red'] ?? null)->toBe($beforeRed);
+    expect(fn () => app(HistoricalMovementsPreviewService::class)->confirm($after))
+        ->toThrow(InvalidArgumentException::class);
+
+    $this->get(route('imports.historical.resolve', $after))->assertOk();
+    @unlink($path);
+});

@@ -119,6 +119,55 @@ class HistoricalMappingRuleService
         return $accounts->resolveAlias($subcuenta);
     }
 
+    public function approveScopeConceptRule(string $matchConceptOrCategory, string $scope, ?string $notes = null): ImportMappingRule
+    {
+        if (! in_array($scope, ['personal', 'professional'], true)) {
+            throw new \InvalidArgumentException('Ámbito de regla inválido.');
+        }
+
+        $rule = ImportMappingRule::query()->updateOrCreate(
+            ['rule_type' => 'scope_concept', 'match_key' => $matchConceptOrCategory],
+            [
+                'match_value' => $scope,
+                'action' => ['scope' => $scope, 'match' => $matchConceptOrCategory],
+                'is_active' => true,
+                'auto_apply' => true,
+                'approved_by' => Auth::id(),
+                'approved_at' => now(),
+                'notes' => $notes ?? "Ámbito {$scope} para «{$matchConceptOrCategory}» (override individual permitido)",
+            ]
+        );
+
+        $this->audit->log('import_scope_rule_approved', $rule, null, $rule->toArray(), 'Regla de ámbito aprobada');
+
+        return $rule;
+    }
+
+    public function resolveScopeOverride(string $concepto, string $cuenta): ?string
+    {
+        $rules = ImportMappingRule::query()
+            ->where('is_active', true)
+            ->where('auto_apply', true)
+            ->where('rule_type', 'scope_concept')
+            ->orderByDesc('id')
+            ->get();
+
+        foreach ($rules as $rule) {
+            $match = (string) $rule->match_key;
+            if ($match !== '' && (
+                strcasecmp($match, $concepto) === 0
+                || strcasecmp($match, $cuenta) === 0
+                || ($concepto !== '' && stripos($concepto, $match) !== false)
+            )) {
+                $rule->increment('times_applied');
+
+                return $rule->action['scope'] ?? $rule->match_value;
+            }
+        }
+
+        return null;
+    }
+
     public function hasInterpretationRule(string $key): bool
     {
         return ImportMappingRule::query()

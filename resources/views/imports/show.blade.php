@@ -110,6 +110,9 @@
 
         <div class="ar-card mb-4 border border-amber-300 p-4 text-sm">
             Confirmación de movimientos históricos <strong>bloqueada</strong>. Abonos = solo recurrencia detectada (sin crear).
+            <div class="mt-2">
+                <a href="{{ route('imports.historical.resolve', $batch) }}" class="ar-btn ar-btn-primary">Abrir resolución de preview</a>
+            </div>
         </div>
 
         @can('imports.execute')

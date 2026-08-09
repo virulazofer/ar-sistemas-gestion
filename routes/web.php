@@ -74,11 +74,19 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/importaciones/{import}/confirmar-historico', [HistoricalImportController::class, 'confirmMovements'])->name('imports.historical.confirm-movements');
         Route::post('/importaciones/{import}/reprocesar-historico', [HistoricalImportController::class, 'reprocess'])->name('imports.historical.reprocess');
         Route::post('/importaciones/{import}/regla-cuenta', [HistoricalImportController::class, 'approveAccountRule'])->name('imports.historical.approve-account');
+        Route::post('/importaciones/{import}/resolver/fechas', [HistoricalImportController::class, 'decideDates'])->name('imports.historical.decide-dates');
+        Route::post('/importaciones/{import}/resolver/venta-compleja', [HistoricalImportController::class, 'decideComplex'])->name('imports.historical.decide-complex');
+        Route::post('/importaciones/{import}/resolver/tarjetas', [HistoricalImportController::class, 'decideCards'])->name('imports.historical.decide-cards');
+        Route::post('/importaciones/{import}/resolver/ambito', [HistoricalImportController::class, 'decideScope'])->name('imports.historical.decide-scope');
         Route::post('/importaciones/{import}/revertir', [ImportController::class, 'rollback'])->name('imports.rollback');
     });
     Route::get('/importaciones/{import}', [ImportController::class, 'show'])
         ->middleware('permission:imports.view')
         ->name('imports.show');
+    Route::get('/importaciones/{import}/resolver-historico', [HistoricalImportController::class, 'resolve'])
+        ->middleware('permission:imports.view')
+        ->name('imports.historical.resolve');
+
 
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');

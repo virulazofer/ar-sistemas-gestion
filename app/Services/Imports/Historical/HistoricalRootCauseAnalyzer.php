@@ -135,6 +135,12 @@ class HistoricalRootCauseAnalyzer
         $status = $row['review_status'] ?? 'yellow';
         $amounts = $row['amounts'] ?? [];
 
+        if (in_array('venta_compleja_resuelta', $flags, true)) {
+            return 'operacion_venta_compleja_resuelta';
+        }
+        if (in_array('tarjeta_resuelta', $flags, true)) {
+            return 'pago_tarjeta_resuelto';
+        }
         if (in_array('operacion_compleja', $flags, true)) {
             if (($amounts['venta'] ?? 0) > 0 && (($amounts['cc_in'] ?? 0) > 0 || ($amounts['merca_out'] ?? 0) > 0)) {
                 return 'operacion_venta_compleja';
@@ -185,20 +191,23 @@ class HistoricalRootCauseAnalyzer
     public function label(string $cause): string
     {
         return match ($cause) {
+            'operacion_venta_compleja' => 'Operación venta compleja',
+            'operacion_venta_compleja_resuelta' => 'Venta compleja resuelta (preview)',
+            'merca_cobro_cc' => 'Mercadería + cobro + CC',
+            'operacion_compleja_otra' => 'Operación compleja (otra)',
+            'fecha_invalida_sospechosa' => 'Fecha inválida/sospechosa',
+            'fecha_dudosa' => 'Fecha dudosa',
             'alias_cliente' => 'Alias / cliente ambiguo',
             'cuenta_desconocida' => 'Cuenta financiera desconocida',
             'ambito_dudoso' => 'Ámbito Personal/Profesional dudoso',
             'cc_combinado_ingreso' => 'CC combinado con ingreso financiero',
-            'proveedor_dudoso' => 'Proveedor dudoso',
-            'fecha_dudosa' => 'Fecha dudosa',
-            'fecha_invalida_sospechosa' => 'Fecha inválida/sospechosa',
             'pago_tarjeta' => 'Pago / movimiento de tarjeta',
+            'pago_tarjeta_resuelto' => 'Tarjeta resuelta (preview)',
+            'proveedor_dudoso' => 'Proveedor dudoso',
             'cc_simple_revision' => 'Movimiento CC a revisar',
             'merca_analisis' => 'Mercadería (solo análisis)',
-            'operacion_venta_compleja' => 'Operación venta compleja',
-            'merca_cobro_cc' => 'Mercadería + cobro + CC',
-            'operacion_compleja_otra' => 'Operación compleja (otra)',
             'inconsistencia_financiera' => 'Inconsistencia financiera',
+            'excluida' => 'Fila excluida',
             default => 'Otra causa',
         };
     }
