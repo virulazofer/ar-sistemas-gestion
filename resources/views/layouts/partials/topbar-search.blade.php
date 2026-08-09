@@ -99,7 +99,7 @@
                 <p class="ar-muted px-3 py-2 text-sm">Buscando…</p>
             </template>
             <template x-if="!loading && results && !hasAny()">
-                <p class="ar-muted px-3 py-2 text-sm">Sin resultados.</p>
+                <p class="ar-muted px-3 py-2 text-sm">No se encontraron resultados</p>
             </template>
             <template x-if="!loading && results && hasAny()">
                 <div>
@@ -152,7 +152,7 @@
                     <p class="ar-muted px-3 py-2 text-sm">Buscando…</p>
                 </template>
                 <template x-if="!loading && results && !hasAny()">
-                    <p class="ar-muted px-3 py-2 text-sm">Sin resultados.</p>
+                    <p class="ar-muted px-3 py-2 text-sm">No se encontraron resultados</p>
                 </template>
                 <template x-if="!loading && results && hasAny()">
                     <div>

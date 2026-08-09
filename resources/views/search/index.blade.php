@@ -37,6 +37,6 @@
     @endforeach
 
     @if ($q !== '' && collect($results)->flatten(1)->isEmpty())
-        <p class="ar-muted">Sin resultados.</p>
+        <p class="ar-muted">No se encontraron resultados</p>
     @endif
 </x-app-layout>

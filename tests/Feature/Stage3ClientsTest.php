@@ -19,25 +19,57 @@ function seedClientsStage(): void
     test()->seed(ExchangeRateSeeder::class);
 }
 
-test('crear cliente con datos fiscales', function () {
+test('crear cliente particular con DNI y condición fiscal', function () {
     $admin = makeAdmin();
     seedClientsStage();
 
     $this->actingAs($admin)->post(route('clients.store'), [
         'name' => 'Cliente de prueba',
-        'business_name' => 'Cliente de prueba SA',
-        'cuit' => '30-71234567-8',
-        'dni' => null,
+        'party_type' => 'particular',
+        'business_name' => null,
+        'cuit' => null,
+        'dni' => '30111222',
         'phone' => '111',
         'email' => 'cliente@example.com',
         'address' => 'Calle 1',
-        'tax_condition' => 'Responsable Inscripto',
+        'tax_condition' => 'consumidor_final',
         'status' => 'active',
         'notes' => 'Nota',
     ])->assertRedirect();
 
-    expect(Client::where('cuit', '30-71234567-8')->exists())->toBeTrue();
+    expect(Client::where('dni', '30111222')->exists())->toBeTrue();
     expect(AuditLog::where('action', 'client_created')->exists())->toBeTrue();
+});
+
+test('crear cliente empresa requiere CUIT y razón social', function () {
+    $admin = makeAdmin();
+    seedClientsStage();
+
+    $this->actingAs($admin)->post(route('clients.store'), [
+        'name' => 'Empresa SA',
+        'party_type' => 'empresa',
+        'business_name' => 'Empresa SA',
+        'cuit' => '30-71234567-8',
+        'dni' => null,
+        'tax_condition' => 'responsable_inscripto',
+        'status' => 'active',
+    ])->assertRedirect();
+
+    expect(Client::where('cuit', '30-71234567-8')->exists())->toBeTrue();
+});
+
+test('cliente empresa sin CUIT falla validación', function () {
+    $admin = makeAdmin();
+    seedClientsStage();
+
+    $this->actingAs($admin)->post(route('clients.store'), [
+        'name' => 'Empresa incompleta',
+        'party_type' => 'empresa',
+        'business_name' => 'Empresa incompleta SA',
+        'cuit' => null,
+        'tax_condition' => 'responsable_inscripto',
+        'status' => 'active',
+    ])->assertSessionHasErrors(['cuit']);
 });
 
 test('cargos ARS/USD independientes y sin movimiento financiero', function () {

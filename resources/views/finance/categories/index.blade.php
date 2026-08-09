@@ -1,6 +1,9 @@
 <x-app-layout>
     <x-slot name="header">
-        <h1 class="text-xl font-semibold">Categorías y subcategorías</h1>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <h1 class="text-xl font-semibold">Categorías y subcategorías</h1>
+            <x-page-help topic="chart_accounts" />
+        </div>
     </x-slot>
 
     <div class="mb-6 grid gap-4 lg:grid-cols-2">
@@ -17,7 +20,7 @@
                 <select name="chart_account_id" class="ar-input">
                     <option value="">Plan de cuentas (opcional)</option>
                     @foreach ($chartAccounts as $ca)
-                        <option value="{{ $ca->id }}">{{ $ca->code }} — {{ $ca->name }}</option>
+                        <option value="{{ $ca->id }}">{{ $ca->code }} — {{ $ca->name }} ({{ $ca->typeLabel() }})</option>
                     @endforeach
                 </select>
                 <button class="ar-btn ar-btn-primary">Crear categoría</button>
@@ -28,14 +31,14 @@
                 <h2 class="font-semibold">Nueva subcategoría</h2>
                 <select name="category_id" class="ar-input" required>
                     @foreach ($categories as $category)
-                        <option value="{{ $category->id }}">{{ $category->name }} ({{ $category->scope }})</option>
+                        <option value="{{ $category->id }}">{{ $category->name }} ({{ match($category->scope) { 'personal' => 'Personal', 'professional' => 'Profesional', 'both' => 'Ambos', default => $category->scope } }})</option>
                     @endforeach
                 </select>
                 <input name="name" class="ar-input" placeholder="Nombre" required>
                 <select name="chart_account_id" class="ar-input">
                     <option value="">Plan de cuentas (opcional)</option>
                     @foreach ($chartAccounts as $ca)
-                        <option value="{{ $ca->id }}">{{ $ca->code }} — {{ $ca->name }}</option>
+                        <option value="{{ $ca->id }}">{{ $ca->code }} — {{ $ca->name }} ({{ $ca->typeLabel() }})</option>
                     @endforeach
                 </select>
                 <button class="ar-btn ar-btn-primary">Crear subcategoría</button>
@@ -46,8 +49,8 @@
     <div class="space-y-4">
         @foreach ($categories as $category)
             <div class="ar-card p-4">
-                <h2 class="font-semibold">{{ $category->name }} <span class="ar-muted text-sm">({{ $category->scope }})</span></h2>
-                <p class="ar-muted text-xs">Plan: {{ $category->chartAccount?->code }} {{ $category->chartAccount?->name }}</p>
+                <h2 class="font-semibold">{{ $category->name }} <span class="ar-muted text-sm">({{ match($category->scope) { 'personal' => 'Personal', 'professional' => 'Profesional', 'both' => 'Ambos', default => $category->scope } }})</span></h2>
+                <p class="ar-muted text-xs">Plan: {{ $category->chartAccount?->code }} {{ $category->chartAccount?->name }}@if($category->chartAccount) ({{ $category->chartAccount->typeLabel() }})@endif</p>
                 <ul class="mt-2 list-disc ps-5 text-sm">
                     @forelse ($category->subcategories as $sub)
                         <li>{{ $sub->name }}</li>

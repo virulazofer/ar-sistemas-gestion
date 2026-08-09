@@ -1,57 +1,90 @@
 @php
+    use App\Enums\PartyType;
+    use App\Enums\TaxCondition;
+
     $supplier ??= null;
+    $partyType = old('party_type', $supplier?->party_type?->value ?? $supplier?->party_type ?? PartyType::Particular->value);
+    $taxCondition = old('tax_condition', $supplier?->tax_condition?->value ?? $supplier?->tax_condition);
 @endphp
 
-<div>
-    <label class="ar-label" for="name">Nombre</label>
-    <input id="name" name="name" class="ar-input" value="{{ old('name', $supplier?->name) }}" required>
-</div>
-<div>
-    <label class="ar-label" for="business_name">Razón social</label>
-    <input id="business_name" name="business_name" class="ar-input" value="{{ old('business_name', $supplier?->business_name) }}">
-</div>
-<div class="grid gap-4 sm:grid-cols-2">
+<div
+    class="space-y-4"
+    x-data="{ partyType: @js($partyType) }"
+>
     <div>
-        <label class="ar-label" for="cuit">CUIT</label>
-        <input id="cuit" name="cuit" class="ar-input" value="{{ old('cuit', $supplier?->cuit) }}">
+        <label class="ar-label" for="party_type">Tipo de proveedor</label>
+        <select id="party_type" name="party_type" class="ar-input" x-model="partyType" required>
+            @foreach (PartyType::cases() as $type)
+                <option value="{{ $type->value }}" @selected($partyType === $type->value)>{{ $type->label() }}</option>
+            @endforeach
+        </select>
+    </div>
+
+    <div>
+        <label class="ar-label" for="name">Nombre</label>
+        <input id="name" name="name" class="ar-input" value="{{ old('name', $supplier?->name) }}" required>
+    </div>
+
+    <div x-show="partyType === 'empresa'" x-cloak>
+        <label class="ar-label" for="business_name">Razón social</label>
+        <input id="business_name" name="business_name" class="ar-input" value="{{ old('business_name', $supplier?->business_name) }}" :required="partyType === 'empresa'">
+        <p class="ar-muted mt-1 text-xs">Obligatoria para empresas.</p>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2">
+        <div x-show="partyType === 'particular'" x-cloak>
+            <label class="ar-label" for="dni">DNI</label>
+            <input id="dni" name="dni" class="ar-input" value="{{ old('dni', $supplier?->dni) }}" inputmode="numeric" :required="partyType === 'particular'">
+            <p class="ar-muted mt-1 text-xs">Obligatorio para particulares (7–8 dígitos).</p>
+        </div>
+        <div>
+            <label class="ar-label" for="cuit">
+                CUIT
+                <span class="ar-muted" x-show="partyType === 'particular'" x-cloak>(opcional)</span>
+            </label>
+            <input id="cuit" name="cuit" class="ar-input" value="{{ old('cuit', $supplier?->cuit) }}" :required="partyType === 'empresa'">
+            <p class="ar-muted mt-1 text-xs" x-show="partyType === 'empresa'" x-cloak>Obligatorio para empresas (11 dígitos).</p>
+        </div>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+            <label class="ar-label" for="phone">Teléfono</label>
+            <input id="phone" name="phone" class="ar-input" value="{{ old('phone', $supplier?->phone) }}">
+        </div>
+        <div>
+            <label class="ar-label" for="email">Email</label>
+            <input id="email" name="email" type="email" class="ar-input" value="{{ old('email', $supplier?->email) }}">
+        </div>
     </div>
     <div>
-        <label class="ar-label" for="dni">DNI</label>
-        <input id="dni" name="dni" class="ar-input" value="{{ old('dni', $supplier?->dni) }}">
+        <label class="ar-label" for="address">Dirección</label>
+        <input id="address" name="address" class="ar-input" value="{{ old('address', $supplier?->address) }}">
     </div>
-</div>
-<div class="grid gap-4 sm:grid-cols-2">
-    <div>
-        <label class="ar-label" for="phone">Teléfono</label>
-        <input id="phone" name="phone" class="ar-input" value="{{ old('phone', $supplier?->phone) }}">
-    </div>
-    <div>
-        <label class="ar-label" for="email">Email</label>
-        <input id="email" name="email" type="email" class="ar-input" value="{{ old('email', $supplier?->email) }}">
-    </div>
-</div>
-<div>
-    <label class="ar-label" for="address">Dirección</label>
-    <input id="address" name="address" class="ar-input" value="{{ old('address', $supplier?->address) }}">
-</div>
-<div class="grid gap-4 sm:grid-cols-2">
-    <div>
-        <label class="ar-label" for="contact_name">Contacto</label>
-        <input id="contact_name" name="contact_name" class="ar-input" value="{{ old('contact_name', $supplier?->contact_name) }}">
+    <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+            <label class="ar-label" for="contact_name">Contacto</label>
+            <input id="contact_name" name="contact_name" class="ar-input" value="{{ old('contact_name', $supplier?->contact_name) }}">
+        </div>
+        <div>
+            <label class="ar-label" for="tax_condition">Condición fiscal</label>
+            <select id="tax_condition" name="tax_condition" class="ar-input" required>
+                <option value="">Seleccionar…</option>
+                @foreach (TaxCondition::cases() as $condition)
+                    <option value="{{ $condition->value }}" @selected($taxCondition === $condition->value)>{{ $condition->label() }}</option>
+                @endforeach
+            </select>
+        </div>
     </div>
     <div>
-        <label class="ar-label" for="tax_condition">Condición fiscal</label>
-        <input id="tax_condition" name="tax_condition" class="ar-input" value="{{ old('tax_condition', $supplier?->tax_condition) }}" placeholder="Responsable Inscripto, Monotributo…">
+        <label class="ar-label" for="status">Estado</label>
+        <select id="status" name="status" class="ar-input">
+            <option value="active" @selected(old('status', $supplier?->status ?? 'active') === 'active')>Activo</option>
+            <option value="inactive" @selected(old('status', $supplier?->status) === 'inactive')>Inactivo</option>
+        </select>
     </div>
-</div>
-<div>
-    <label class="ar-label" for="status">Estado</label>
-    <select id="status" name="status" class="ar-input">
-        <option value="active" @selected(old('status', $supplier?->status ?? 'active') === 'active')>Activo</option>
-        <option value="inactive" @selected(old('status', $supplier?->status) === 'inactive')>Inactivo</option>
-    </select>
-</div>
-<div>
-    <label class="ar-label" for="notes">Notas</label>
-    <textarea id="notes" name="notes" class="ar-input" rows="3">{{ old('notes', $supplier?->notes) }}</textarea>
+    <div>
+        <label class="ar-label" for="notes">Notas</label>
+        <textarea id="notes" name="notes" class="ar-input" rows="3">{{ old('notes', $supplier?->notes) }}</textarea>
+    </div>
 </div>

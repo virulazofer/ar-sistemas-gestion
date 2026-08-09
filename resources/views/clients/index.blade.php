@@ -5,9 +5,12 @@
                 <h1 class="text-xl font-semibold">Clientes</h1>
                 <p class="ar-muted text-sm">Cuentas corrientes ARS / USD independientes.</p>
             </div>
-            @can('clients.create')
-                <a href="{{ route('clients.create') }}" class="ar-btn ar-btn-primary">Nuevo cliente</a>
-            @endcan
+            <div class="flex flex-wrap items-center gap-2">
+                <x-page-help topic="clients" />
+                @can('clients.create')
+                    <a href="{{ route('clients.create') }}" class="ar-btn ar-btn-primary">Nuevo cliente</a>
+                @endcan
+            </div>
         </div>
     </x-slot>
 

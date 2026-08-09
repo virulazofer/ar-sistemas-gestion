@@ -6,6 +6,7 @@
                 <p class="ar-muted text-sm">Información accionable · monedas separadas · {{ $data['generated_at'] }}</p>
             </div>
             <div class="flex flex-wrap gap-2">
+                <x-page-help topic="dashboard" />
                 <a href="{{ route('dashboard.operations', ['scope' => 'personal']) }}" class="ar-btn ar-btn-secondary {{ ($data['scope'] ?? '') === 'personal' ? 'font-semibold' : '' }}">Personal</a>
                 <a href="{{ route('dashboard.operations', ['scope' => 'professional']) }}" class="ar-btn ar-btn-secondary {{ ($data['scope'] ?? '') === 'professional' ? 'font-semibold' : '' }}">Profesional</a>
                 <a href="{{ route('dashboard.operations', ['scope' => 'all']) }}" class="ar-btn ar-btn-secondary {{ ($data['scope'] ?? '') === 'all' ? 'font-semibold' : '' }}">Consolidado</a>
@@ -49,9 +50,9 @@
         </div>
         <div class="ar-card p-4">
             <h2 class="mb-2 font-semibold">Dólar oficial</h2>
-            @if ($data['rate'])
-                <p class="text-2xl font-bold">{{ number_format((float) $data['rate']->rate, 2, ',', '.') }}</p>
-                <p class="ar-muted text-sm">{{ $data['rate_label'] }} · {{ $data['rate']->rate_at?->format('d/m/Y H:i') }}</p>
+            @if (!empty($data['rate']['rate']))
+                <p class="text-2xl font-bold">{{ number_format((float) $data['rate']['rate'], 2, ',', '.') }}</p>
+                <p class="ar-muted text-sm">{{ $data['rate_label'] }}@if (!empty($data['rate']['rate_at_label'])) · {{ $data['rate']['rate_at_label'] }}@endif</p>
             @else
                 <p class="ar-muted">Sin cotización cargada.</p>
             @endif

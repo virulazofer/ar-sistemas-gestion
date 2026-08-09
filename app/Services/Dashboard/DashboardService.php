@@ -61,11 +61,18 @@ class DashboardService
 
     private function build(string $scope): array
     {
-        $rate = null;
+        // Solo datos serializables: Cache::remember (driver database) no debe guardar
+        // modelos Eloquent — al deserializar producen __PHP_Incomplete_Class (HTTP 500).
+        $ratePayload = null;
         $rateLabel = null;
         try {
             $info = $this->rates->latestOfficialSell(false);
-            $rate = $info['rate'];
+            $model = $info['rate'];
+            $ratePayload = [
+                'rate' => (string) $model->rate,
+                'rate_at' => $model->rate_at?->toDateTimeString(),
+                'rate_at_label' => $model->rate_at?->format('d/m/Y H:i'),
+            ];
             $rateLabel = $info['source_label'];
         } catch (\Throwable) {
         }
@@ -84,7 +91,7 @@ class DashboardService
 
         return [
             'scope' => $scope,
-            'rate' => $rate,
+            'rate' => $ratePayload,
             'rate_label' => $rateLabel,
             'liquid' => $liquid,
             'clients' => $clients,
@@ -113,8 +120,8 @@ class DashboardService
 
         $accounts = FinancialAccount::query()->with('currency')->active()->get();
         foreach ($accounts as $account) {
-            $code = $account->currency->code;
-            if (! isset($out[$code])) {
+            $code = $account->currency?->code;
+            if (! $code || ! isset($out[$code])) {
                 continue;
             }
             $bal = $this->balances->computeAccountBalance($account->id);
@@ -148,7 +155,10 @@ class DashboardService
         $debtorIds = [];
         foreach ($rows as $row) {
             $bal = Money::normalize((string) $row->bal);
-            $code = $row->currency->code;
+            $code = $row->currency?->code;
+            if (! $code) {
+                continue;
+            }
             if ($code === 'ARS') {
                 $ars = Money::add($ars, Money::mul($bal, '-1'));
             } elseif ($code === 'USD') {
@@ -190,7 +200,10 @@ class DashboardService
         foreach ($rows as $row) {
             $bal = Money::normalize((string) $row->bal);
             $debt = Money::mul($bal, '-1');
-            $code = $row->currency->code;
+            $code = $row->currency?->code;
+            if (! $code) {
+                continue;
+            }
             if ($code === 'ARS') {
                 $ars = Money::add($ars, $debt);
             } elseif ($code === 'USD') {
@@ -223,12 +236,24 @@ class DashboardService
             ->count();
         $value = $this->stockBalances->inventoryValue();
 
+        $mapMovement = static function (InventoryMovement $m): array {
+            return [
+                'id' => $m->id,
+                'product_id' => $m->product_id,
+                'product_name' => $m->product?->name,
+                'type' => $m->type instanceof \BackedEnum ? $m->type->value : (string) $m->type,
+                'quantity' => (string) $m->quantity,
+            ];
+        };
+
         $lastIn = InventoryMovement::query()->posted()
             ->whereIn('type', ['receipt', 'adjustment_in', 'transfer_in'])
-            ->latest('id')->limit(5)->with('product')->get();
+            ->latest('id')->limit(5)->with('product')->get()
+            ->map($mapMovement)->all();
         $lastOut = InventoryMovement::query()->posted()
             ->whereIn('type', ['consume', 'issue', 'adjustment_out', 'transfer_out'])
-            ->latest('id')->limit(5)->with('product')->get();
+            ->latest('id')->limit(5)->with('product')->get()
+            ->map($mapMovement)->all();
 
         return [
             'products_count' => $count,

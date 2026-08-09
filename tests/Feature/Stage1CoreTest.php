@@ -212,16 +212,18 @@ test('la sidebar abre solo el grupo de la ruta activa al cargar', function () {
     $dashboard->assertOk()
         ->assertSee('data-sidebar-active="inicio"', false)
         ->assertSee('\u0022inicio\u0022:true', false)
+        ->assertSee('\u0022mae\u0022:false', false)
         ->assertSee('\u0022com\u0022:false', false)
         ->assertSee('\u0022inv\u0022:false', false)
         ->assertSee('\u0022adm\u0022:false', false);
 
     $clients = $this->actingAs($admin)->get(route('clients.index'));
     $clients->assertOk()
-        ->assertSee('data-sidebar-active="com"', false)
-        ->assertSee('\u0022com\u0022:true', false)
+        ->assertSee('data-sidebar-active="mae"', false)
+        ->assertSee('\u0022mae\u0022:true', false)
         ->assertSee('\u0022inicio\u0022:false', false)
         ->assertSee('\u0022fin\u0022:false', false)
+        ->assertSee('\u0022com\u0022:false', false)
         ->assertSee('\u0022inv\u0022:false', false)
         ->assertSee('\u0022ops\u0022:false', false)
         ->assertSee('\u0022rep\u0022:false', false)
@@ -231,6 +233,7 @@ test('la sidebar abre solo el grupo de la ruta activa al cargar', function () {
     $stock->assertOk()
         ->assertSee('data-sidebar-active="inv"', false)
         ->assertSee('\u0022inv\u0022:true', false)
+        ->assertSee('\u0022mae\u0022:false', false)
         ->assertSee('\u0022com\u0022:false', false);
 });
 

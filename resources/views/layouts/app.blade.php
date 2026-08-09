@@ -270,21 +270,28 @@
                 request()->routeIs('movements.quick*')
                     || request()->routeIs('dashboard.operations*')
                     || request()->routeIs('dashboard') => 'inicio',
+                request()->routeIs('clients.*')
+                    || request()->routeIs('suppliers.*')
+                    || request()->routeIs('products.*')
+                    || request()->routeIs('categories.*')
+                    || request()->routeIs('subcategories.*')
+                    || request()->routeIs('equipment.types.*')
+                    || (request()->routeIs('reports.show') && request()->route('type') === 'chart-accounts') => 'mae',
                 request()->routeIs('accounts.*')
                     || request()->routeIs('movements.index')
                     || request()->routeIs('movements.show')
-                    || request()->routeIs('exchange-rates.*')
-                    || request()->routeIs('categories.*') => 'fin',
-                request()->routeIs('clients.*')
-                    || request()->routeIs('quotations.*')
+                    || request()->routeIs('exchange-rates.*') => 'fin',
+                request()->routeIs('quotations.*')
                     || request()->routeIs('sales.*')
                     || request()->routeIs('subscriptions.*') => 'com',
                 request()->routeIs('work-orders.*')
+                    || request()->routeIs('equipment.index')
+                    || request()->routeIs('equipment.create')
+                    || request()->routeIs('equipment.show')
+                    || request()->routeIs('equipment.edit')
                     || request()->routeIs('equipment.*') => 'ops',
-                request()->routeIs('products.*')
-                    || request()->routeIs('stock.*')
-                    || request()->routeIs('purchases.*')
-                    || request()->routeIs('suppliers.*') => 'inv',
+                request()->routeIs('stock.*')
+                    || request()->routeIs('purchases.*') => 'inv',
                 request()->routeIs('reports.*')
                     || request()->routeIs('imports.*') => 'rep',
                 request()->routeIs('users.*')
@@ -296,6 +303,7 @@
 
             $sidebarGroups = [
                 'inicio' => $sidebarActiveGroup === 'inicio',
+                'mae' => $sidebarActiveGroup === 'mae',
                 'fin' => $sidebarActiveGroup === 'fin',
                 'com' => $sidebarActiveGroup === 'com',
                 'ops' => $sidebarActiveGroup === 'ops',

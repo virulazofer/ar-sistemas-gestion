@@ -40,10 +40,11 @@ test('crear proveedor con datos fiscales', function () {
 
     $this->actingAs($admin)->post(route('suppliers.store'), [
         'name' => 'Insumos Norte',
+        'party_type' => 'empresa',
         'business_name' => 'Insumos Norte SRL',
         'cuit' => '30-22222222-2',
         'dni' => null,
-        'tax_condition' => 'Responsable Inscripto',
+        'tax_condition' => 'responsable_inscripto',
         'phone' => '111',
         'email' => 'prov@example.com',
         'address' => 'Calle 1',

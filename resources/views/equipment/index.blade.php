@@ -6,6 +6,7 @@
                 <p class="ar-muted text-sm">Consumo FIFO real · seriales · costo consolidado.</p>
             </div>
             <div class="flex gap-2">
+                <x-page-help topic="equipment" />
                 @can('equipment.view')
                     <a href="{{ route('equipment.types.index') }}" class="ar-btn ar-btn-secondary">Tipos / plantillas</a>
                 @endcan

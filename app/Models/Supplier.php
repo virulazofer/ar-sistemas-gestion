@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 #[Fillable([
     'name',
+    'party_type',
     'business_name',
     'cuit',
     'dni',
@@ -27,6 +28,23 @@ class Supplier extends Model
     public const STATUS_ACTIVE = 'active';
 
     public const STATUS_INACTIVE = 'inactive';
+
+    protected function casts(): array
+    {
+        return [
+            'party_type' => \App\Enums\PartyType::class,
+        ];
+    }
+
+    public function taxConditionLabel(): string
+    {
+        $raw = $this->tax_condition;
+        if ($raw instanceof \App\Enums\TaxCondition) {
+            return $raw->label();
+        }
+
+        return \App\Enums\TaxCondition::tryFrom((string) $raw)?->label() ?? (string) ($raw ?? '');
+    }
 
     public function ledgerEntries(): HasMany
     {

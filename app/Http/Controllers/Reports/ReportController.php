@@ -160,7 +160,7 @@ class ReportController extends Controller
             'chart-accounts' => [
                 'Plan de cuentas',
                 'reports.finance',
-                ['type' => 'Tipo', 'code' => 'Código', 'name' => 'Cuenta', 'amount_ars' => 'Importe ARS'],
+                ['label' => 'Tipo', 'count' => 'Movimientos', 'amount_ars' => 'Importe ARS', 'amount_usd' => 'Importe USD'],
                 $this->normalizeChart($this->reports->chartAccountsSummary()),
             ],
             default => abort(404),
@@ -223,13 +223,28 @@ class ReportController extends Controller
         $rows = [];
         foreach ($result['rows'] ?? [] as $row) {
             $rows[] = [
-                'type' => $row['type'] ?? $row['type_label'] ?? '',
-                'code' => $row['code'] ?? '',
-                'name' => $row['name'] ?? '',
+                'label' => $row['label'] ?? $row['type_label'] ?? $row['type'] ?? '',
+                'count' => $row['count'] ?? 0,
                 'amount_ars' => $row['amount_ars'] ?? $row['total_ars'] ?? '',
+                'amount_usd' => $row['amount_usd'] ?? $row['total_usd'] ?? '',
             ];
         }
 
-        return ['rows' => $rows, 'totals' => $result['totals'] ?? []];
+        $totals = $result['totals'] ?? [];
+        $spanishTotals = [];
+        foreach ($totals as $key => $value) {
+            $spanishTotals[match ((string) $key) {
+                'income_ars' => 'Ingresos ARS',
+                'expense_ars' => 'Gastos ARS',
+                'result_ars' => 'Resultado ARS',
+                'income_usd' => 'Ingresos USD',
+                'expense_usd' => 'Gastos USD',
+                'result_usd' => 'Resultado USD',
+                'movements' => 'Movimientos',
+                default => (string) $key,
+            }] = $value;
+        }
+
+        return ['rows' => $rows, 'totals' => $spanishTotals];
     }
 }

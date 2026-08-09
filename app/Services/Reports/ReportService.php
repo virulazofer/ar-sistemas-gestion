@@ -911,7 +911,10 @@ class ReportService
         ];
 
         foreach ($movements as $m) {
-            $type = $m->chartAccount?->type ?? 'unassigned';
+            $rawType = $m->chartAccount?->type;
+            $type = $rawType instanceof \App\Enums\ChartAccountType
+                ? $rawType->value
+                : ($rawType ?? 'unassigned');
             if (! isset($groups[$type])) {
                 $type = 'unassigned';
             }

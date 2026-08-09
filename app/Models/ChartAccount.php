@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ChartAccountType;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -15,7 +16,17 @@ class ChartAccount extends Model
         return [
             'is_active' => 'boolean',
             'sort_order' => 'integer',
+            'type' => ChartAccountType::class,
         ];
+    }
+
+    public function typeLabel(): string
+    {
+        $type = $this->type;
+
+        return $type instanceof ChartAccountType
+            ? $type->label()
+            : ChartAccountType::labelFor(is_string($type) ? $type : null);
     }
 
     public function parent(): BelongsTo

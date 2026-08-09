@@ -27,6 +27,20 @@ enum CommercialItemType: string
         };
     }
 
+    public function help(): string
+    {
+        return match ($this) {
+            self::Product => 'Producto físico de stock (FIFO).',
+            self::Equipment => 'Equipo ya armado/serializado existente y disponible.',
+            self::Service => 'Trabajo o servicio (no mueve stock de productos).',
+            self::Labor => 'Mano de obra / horas.',
+            self::WorkOrder => 'Referencia a una orden de trabajo.',
+            self::Free => 'Ítem descriptivo libre, sin catálogo.',
+            self::BuildToOrder => 'Tipo/plantilla a fabricar; no fabrica automáticamente al presupuestar.',
+            self::Subscription => 'Abono / cargo recurrente.',
+        };
+    }
+
     public function consumesStock(): bool
     {
         return $this === self::Product;

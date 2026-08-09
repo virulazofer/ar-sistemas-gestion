@@ -5,9 +5,12 @@
                 <h1 class="text-xl font-semibold">Ventas</h1>
                 <p class="ar-muted text-sm">Confirmación atómica · stock + CC + pago.</p>
             </div>
-            @can('sales.create')
-                <a href="{{ route('sales.create') }}" class="ar-btn ar-btn-primary">Nueva venta</a>
-            @endcan
+            <div class="flex flex-wrap items-center gap-2">
+                <x-page-help topic="sales" />
+                @can('sales.create')
+                    <a href="{{ route('sales.create') }}" class="ar-btn ar-btn-primary">Nueva venta</a>
+                @endcan
+            </div>
         </div>
     </x-slot>
     <div class="ar-card overflow-x-auto">

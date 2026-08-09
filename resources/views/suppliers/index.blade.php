@@ -5,9 +5,12 @@
                 <h1 class="text-xl font-semibold">Proveedores</h1>
                 <p class="ar-muted text-sm">CC ARS / USD · compras contado o a crédito.</p>
             </div>
-            @can('suppliers.create')
-                <a href="{{ route('suppliers.create') }}" class="ar-btn ar-btn-primary">Nuevo proveedor</a>
-            @endcan
+            <div class="flex flex-wrap items-center gap-2">
+                <x-page-help topic="suppliers" />
+                @can('suppliers.create')
+                    <a href="{{ route('suppliers.create') }}" class="ar-btn ar-btn-primary">Nuevo proveedor</a>
+                @endcan
+            </div>
         </div>
     </x-slot>
 

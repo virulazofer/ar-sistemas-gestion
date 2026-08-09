@@ -114,15 +114,35 @@ class ClientController extends Controller
 
     private function validated(Request $request, ?int $ignoreId = null): array
     {
+        $partyType = (string) $request->input('party_type', 'particular');
+
         return $request->validate([
             'name' => ['required', 'string', 'max:180'],
-            'business_name' => ['nullable', 'string', 'max:180'],
-            'cuit' => ['nullable', 'string', 'max:20'],
-            'dni' => ['nullable', 'string', 'max:20'],
+            'party_type' => ['required', Rule::enum(\App\Enums\PartyType::class)],
+            'business_name' => [
+                Rule::requiredIf($partyType === \App\Enums\PartyType::Empresa->value),
+                'nullable',
+                'string',
+                'max:180',
+            ],
+            'cuit' => [
+                Rule::requiredIf($partyType === \App\Enums\PartyType::Empresa->value),
+                'nullable',
+                'string',
+                'max:20',
+                'regex:/^[\d\-.\s]{11,16}$/',
+            ],
+            'dni' => [
+                Rule::requiredIf($partyType === \App\Enums\PartyType::Particular->value),
+                'nullable',
+                'string',
+                'max:20',
+                'regex:/^\d{7,8}$/',
+            ],
             'phone' => ['nullable', 'string', 'max:50'],
             'email' => ['nullable', 'email', 'max:180'],
             'address' => ['nullable', 'string', 'max:255'],
-            'tax_condition' => ['nullable', 'string', 'max:64'],
+            'tax_condition' => ['required', Rule::enum(\App\Enums\TaxCondition::class)],
             'status' => ['required', Rule::in(['active', 'inactive'])],
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);

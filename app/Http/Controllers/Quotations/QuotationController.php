@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Quotations;
 
 use App\Enums\CommercialItemType;
+use App\Enums\EquipmentStatus;
 use App\Enums\QuotationStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
@@ -33,7 +34,13 @@ class QuotationController extends Controller
         return view('quotations.create', [
             'clients' => Client::query()->where('status', 'active')->orderBy('name')->get(),
             'products' => Product::query()->where('status', 'active')->orderBy('name')->get(),
-            'equipments' => Equipment::query()->orderBy('code')->get(),
+            'equipments' => Equipment::query()
+                ->whereIn('status', [
+                    EquipmentStatus::Available->value,
+                    EquipmentStatus::Assembled->value,
+                ])
+                ->orderBy('code')
+                ->get(),
             'users' => User::query()->orderBy('name')->get(),
             'itemTypes' => CommercialItemType::cases(),
         ]);
