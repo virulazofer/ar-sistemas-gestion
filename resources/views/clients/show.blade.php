@@ -20,14 +20,22 @@
     </x-slot>
 
     <div class="mb-4 grid gap-4 sm:grid-cols-2">
+        @php
+            $ccClass = fn (string $amount) => \App\Support\UiSemantics::kpiClass(
+                \App\Support\UiSemantics::clientCcDisplayBalance($amount),
+                \App\Support\UiSemantics::MODE_CLIENT_CC
+            );
+            $displayArs = \App\Support\UiSemantics::clientCcDisplayBalance((string) $balances['ARS']);
+            $displayUsd = \App\Support\UiSemantics::clientCcDisplayBalance((string) $balances['USD']);
+        @endphp
         <div class="ar-card p-5">
-            <h2 class="ar-muted text-sm">Saldo ARS</h2>
-            <p class="text-2xl font-bold">{{ number_format((float) $balances['ARS'], 2, ',', '.') }}</p>
-            <p class="ar-muted mt-1 text-xs">Negativo = deuda · Positivo = a favor</p>
+            <h2 class="ar-muted text-sm">Saldo CC ARS (a cobrar)</h2>
+            <p class="text-2xl font-bold {{ $ccClass((string) $balances['ARS']) }}">{{ \App\Support\Money::formatAr($displayArs, 'ARS') }}</p>
+            <p class="ar-muted mt-1 text-xs">Positivo = nos deben · Negativo = a favor · Ledger DB sin cambios</p>
         </div>
         <div class="ar-card p-5">
-            <h2 class="ar-muted text-sm">Saldo USD</h2>
-            <p class="text-2xl font-bold">{{ number_format((float) $balances['USD'], 2, ',', '.') }}</p>
+            <h2 class="ar-muted text-sm">Saldo CC USD (a cobrar)</h2>
+            <p class="text-2xl font-bold {{ $ccClass((string) $balances['USD']) }}">{{ \App\Support\Money::formatAr($displayUsd, 'USD') }}</p>
             <p class="ar-muted mt-1 text-xs">Saldos independientes (sin conversión automática)</p>
         </div>
     </div>

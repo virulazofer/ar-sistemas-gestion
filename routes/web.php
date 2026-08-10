@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Catalog\ProductController;
 use App\Http\Controllers\Clients\ClientController;
+use App\Http\Controllers\Clients\ClientCurrentAccountController;
 use App\Http\Controllers\Clients\ClientLedgerController;
 use App\Http\Controllers\Equipment\EquipmentController;
 use App\Http\Controllers\Equipment\EquipmentTypeController;
@@ -147,6 +148,9 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/clientes', [ClientController::class, 'index'])
         ->middleware('permission:clients.view')
         ->name('clients.index');
+    Route::get('/clientes/cuentas-corrientes', [ClientCurrentAccountController::class, 'index'])
+        ->middleware('permission:clients.view')
+        ->name('clients.current-accounts');
     Route::middleware('permission:clients.create')->group(function () {
         Route::get('/clientes/crear', [ClientController::class, 'create'])->name('clients.create');
         Route::post('/clientes', [ClientController::class, 'store'])->name('clients.store');

@@ -7,6 +7,7 @@
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <x-page-help topic="clients" />
+                <a href="{{ route('clients.current-accounts') }}" class="ar-btn ar-btn-secondary">Cuentas corrientes</a>
                 @can('clients.create')
                     <a href="{{ route('clients.create') }}" class="ar-btn ar-btn-primary">Nuevo cliente</a>
                 @endcan

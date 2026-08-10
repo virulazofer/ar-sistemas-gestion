@@ -71,7 +71,7 @@
         <div class="ar-card p-4">
             <div class="mb-2 flex items-center justify-between">
                 <h2 class="font-semibold">Clientes / Proveedores</h2>
-                <a href="{{ route('clients.index') }}" class="text-sm" style="color: var(--ar-brand);">Ver</a>
+                <a href="{{ route('clients.current-accounts', ['filter' => 'owing']) }}" class="text-sm" style="color: var(--ar-brand);">Ver CC</a>
             </div>
             <p class="text-sm">CxC ARS: <strong>{{ number_format((float) $data['clients']['receivable_ars'], 2, ',', '.') }}</strong> · USD: <strong>{{ number_format((float) $data['clients']['receivable_usd'], 2, ',', '.') }}</strong></p>
             <p class="text-sm">Deudores: {{ $data['clients']['debtors_count'] }}</p>

@@ -171,7 +171,20 @@
     }
 }
 
-/* Dashboard de Gestión — colores semánticos KPI */
+/* Semántica de alertas / importes (11F-1): atención | favorable | neutro */
+.semantic-amount--attention {
+    color: var(--ar-kpi-negative) !important; /* rojo = requiere atención */
+}
+
+.semantic-amount--favorable {
+    color: var(--ar-kpi-positive) !important; /* verde = favorable */
+}
+
+.semantic-amount--neutral {
+    color: var(--ar-kpi-zero) !important;
+}
+
+/* Dashboard de Gestión — colores semánticos KPI (alias legacy de semantic-amount) */
 .ar-kpi-card .ar-kpi-value {
     font-size: 1.5rem;
     font-weight: 700;

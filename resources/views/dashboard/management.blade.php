@@ -9,12 +9,11 @@
         $pos = $d['position'];
         $prevYm = \Carbon\Carbon::createFromFormat('Y-m', $period['ym'])->subMonthNoOverflow()->format('Y-m');
         $nextYm = \Carbon\Carbon::createFromFormat('Y-m', $period['ym'])->addMonthNoOverflow()->format('Y-m');
-        $kpiClass = function (string $amount): string {
-            if (\App\Support\Money::isZero($amount)) {
-                return 'ar-kpi-zero';
-            }
-
-            return \App\Support\Money::isPositive($amount) ? 'ar-kpi-positive' : 'ar-kpi-negative';
+        $kpiClass = function (string $amount, string $mode = \App\Support\UiSemantics::MODE_RESULT): string {
+            return \App\Support\UiSemantics::kpiClass($amount, $mode);
+        };
+        $ccClass = function (string $amount): string {
+            return \App\Support\UiSemantics::kpiClass($amount, \App\Support\UiSemantics::MODE_CLIENT_CC);
         };
         $fmtVar = function (?array $v): string {
             if ($v === null) {
@@ -160,22 +159,22 @@
     <div class="mb-4 grid gap-3 lg:grid-cols-4">
         <div class="ar-card ar-kpi-card p-4">
             <p class="ar-muted text-xs">A cobrar al cierre</p>
-            <p class="ar-kpi-value">{{ \App\Support\Money::formatAr($cc['closing']['ARS'], 'ARS') }}</p>
-            <p class="ar-muted text-xs">{{ \App\Support\Money::formatAr($cc['closing']['USD'], 'USD') }}</p>
+            <p class="ar-kpi-value {{ $ccClass($cc['closing']['ARS']) }}">{{ \App\Support\Money::formatAr($cc['closing']['ARS'], 'ARS') }}</p>
+            <p class="ar-muted text-xs {{ $ccClass($cc['closing']['USD']) }}">{{ \App\Support\Money::formatAr($cc['closing']['USD'], 'USD') }}</p>
         </div>
         <div class="ar-card ar-kpi-card p-4">
             <p class="ar-muted text-xs">Nuevas deudas (CC IN)</p>
-            <p class="ar-kpi-value ar-kpi-negative">{{ \App\Support\Money::formatAr($cc['new_debt']['ARS'], 'ARS') }}</p>
+            <p class="ar-kpi-value {{ $ccClass($cc['new_debt']['ARS']) }}">{{ \App\Support\Money::formatAr($cc['new_debt']['ARS'], 'ARS') }}</p>
             <p class="ar-muted text-xs">{{ \App\Support\Money::formatAr($cc['new_debt']['USD'], 'USD') }}</p>
         </div>
         <div class="ar-card ar-kpi-card p-4">
             <p class="ar-muted text-xs">Cobros / cancelaciones (CC OUT)</p>
-            <p class="ar-kpi-value ar-kpi-positive">{{ \App\Support\Money::formatAr($cc['collections']['ARS'], 'ARS') }}</p>
+            <p class="ar-kpi-value {{ $kpiClass($cc['collections']['ARS']) }}">{{ \App\Support\Money::formatAr($cc['collections']['ARS'], 'ARS') }}</p>
             <p class="ar-muted text-xs">{{ \App\Support\Money::formatAr($cc['collections']['USD'], 'USD') }}</p>
         </div>
         <div class="ar-card ar-kpi-card p-4">
             <p class="ar-muted text-xs">Variación (cierre - apertura)</p>
-            <p class="ar-kpi-value {{ $kpiClass($cc['variation']['ARS']) }}">{{ \App\Support\Money::formatAr($cc['variation']['ARS'], 'ARS') }}</p>
+            <p class="ar-kpi-value {{ $ccClass($cc['variation']['ARS']) }}">{{ \App\Support\Money::formatAr($cc['variation']['ARS'], 'ARS') }}</p>
             <p class="ar-muted text-xs">{{ \App\Support\Money::formatAr($cc['variation']['USD'], 'USD') }}</p>
         </div>
     </div>
@@ -184,11 +183,11 @@
         <div class="ar-card mb-4 p-4 text-sm">
             <p class="mb-1 font-semibold">Puente CC ARS</p>
             <p>
-                Inicial {{ \App\Support\Money::formatAr($cc['bridge']['ARS']['initial']) }}
+                Inicial <span class="{{ $ccClass($cc['bridge']['ARS']['initial']) }}">{{ \App\Support\Money::formatAr($cc['bridge']['ARS']['initial']) }}</span>
                 + IN {{ \App\Support\Money::formatAr($cc['bridge']['ARS']['in']) }}
                 - OUT {{ \App\Support\Money::formatAr($cc['bridge']['ARS']['out']) }}
-                = {{ \App\Support\Money::formatAr($cc['bridge']['ARS']['computed_final']) }}
-                (cierre {{ \App\Support\Money::formatAr($cc['bridge']['ARS']['final']) }})
+                = <span class="{{ $ccClass($cc['bridge']['ARS']['computed_final']) }}">{{ \App\Support\Money::formatAr($cc['bridge']['ARS']['computed_final']) }}</span>
+                (cierre <span class="{{ $ccClass($cc['bridge']['ARS']['final']) }}">{{ \App\Support\Money::formatAr($cc['bridge']['ARS']['final']) }}</span>)
             </p>
             @if (!empty($cc['note']))
                 <p class="ar-muted mt-1">{{ $cc['note'] }}</p>
@@ -196,11 +195,11 @@
         </div>
     @endif
 
-    @if (!empty($cc['clients']))
+    @if (!empty($cc['clients']) || ($cc['applicable'] ?? false))
         <div class="ar-card mb-4 overflow-x-auto p-4">
-            <div class="mb-2 flex justify-between">
-                <h3 class="font-semibold">Clientes con saldo ≠ 0 al cierre</h3>
-                <a href="{{ $d['drilldown']['clients'] }}" class="text-sm" style="color: var(--ar-brand);">Clientes</a>
+            <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <h3 class="font-semibold">Top deudores al cierre</h3>
+                <a href="{{ $d['drilldown']['client_current_accounts'] ?? $d['drilldown']['clients'] }}" class="text-sm" style="color: var(--ar-brand);">Ver todas las cuentas corrientes</a>
             </div>
             <table class="ar-table">
                 <thead>
@@ -211,7 +210,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach ($cc['clients'] as $row)
+                    @forelse ($cc['clients'] as $row)
                         <tr>
                             <td>
                                 @if ($row['url'])
@@ -221,9 +220,13 @@
                                 @endif
                             </td>
                             <td>{{ $row['currency'] }}</td>
-                            <td class="text-right {{ $kpiClass($row['balance']) }}">{{ \App\Support\Money::formatAr($row['balance'], $row['currency'] ?? 'ARS') }}</td>
+                            <td class="text-right {{ $ccClass($row['balance']) }}">{{ \App\Support\Money::formatAr($row['balance'], $row['currency'] ?? 'ARS') }}</td>
                         </tr>
-                    @endforeach
+                    @empty
+                        <tr>
+                            <td colspan="3" class="ar-muted px-4 py-4 text-center">Sin deudores al cierre.</td>
+                        </tr>
+                    @endforelse
                 </tbody>
             </table>
         </div>

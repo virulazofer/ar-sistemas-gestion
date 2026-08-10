@@ -305,9 +305,11 @@ it('cc cierre histórico inicial + IN - OUT y clientes con saldo', function () {
         ->and($cc['bridge']['ARS']['computed_final'])->toBe($cc['bridge']['ARS']['final']);
 
     $names = collect($cc['clients'])->pluck('name')->all();
-    expect($names)->toContain('DAASA')
-        ->and($names)->toContain('Cintas')
-        ->and($names)->toContain('Lidercar');
+    expect($names)->toBe(['DAASA', 'Cintas', 'Lidercar'])
+        ->and($cc['clients'][0]['balance'])->toBe('700.00');
+
+    $built = $svc->build(['preset' => 'custom', 'from' => '2026-08-01', 'to' => '2026-08-31']);
+    expect($built['drilldown']['clients'])->toContain('cuentas-corrientes');
 });
 
 it('posición histórica al cierre no usa saldo de hoy', function () {

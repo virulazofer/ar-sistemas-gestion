@@ -12,6 +12,7 @@ use App\Models\FinancialAccount;
 use App\Models\Movement;
 use App\Models\Sale;
 use App\Support\Money;
+use App\Support\UiSemantics;
 use Carbon\Carbon;
 
 /**
@@ -322,7 +323,7 @@ class ManagementDashboardService
         $opening = $this->receivableAsOf($openingDate);
         $closing = $this->receivableAsOf($period['to']);
         $activity = $this->ccPeriodActivity($period['from'], $period['to']);
-        $clients = $this->clientsWithBalanceAsOf($period['to']);
+        $clients = $this->topDebtorsAsOf($period['to'], 5);
 
         $variation = [
             'ARS' => Money::sub($closing['ARS'], $opening['ARS']),
@@ -596,6 +597,26 @@ class ManagementDashboardService
     }
 
     /**
+     * Top deudores al cierre (saldo presentación + = nos deben), mayor→menor.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function topDebtorsAsOf(string $asOf, int $limit = 5): array
+    {
+        $all = $this->clientsWithBalanceAsOf($asOf);
+        $debtors = array_values(array_filter(
+            $all,
+            fn ($row) => Money::isPositive($row['balance'])
+        ));
+
+        usort($debtors, fn ($a, $b) => Money::compare($b['balance'], $a['balance']));
+
+        return array_slice($debtors, 0, $limit);
+    }
+
+    /**
+     * Saldos CC al cierre en convención de presentación (+ = a cobrar / nos deben).
+     *
      * @return list<array<string, mixed>>
      */
     public function clientsWithBalanceAsOf(string $asOf): array
@@ -615,8 +636,8 @@ class ManagementDashboardService
             if (Money::isZero($bal)) {
                 continue;
             }
-            // signed_amount negativo = cliente debe → a cobrar positivo
-            $receivable = Money::mul($bal, '-1');
+            // signed_amount negativo = cliente debe → presentación positiva (a cobrar)
+            $receivable = UiSemantics::clientCcDisplayBalance($bal);
             $out[] = [
                 'client_id' => $row->client_id,
                 'name' => $row->client?->name ?? ('#'.$row->client_id),
@@ -628,10 +649,10 @@ class ManagementDashboardService
         }
 
         usort($out, function ($a, $b) {
-            $absA = Money::isNegative($a['balance']) ? Money::mul($a['balance'], '-1') : $a['balance'];
-            $absB = Money::isNegative($b['balance']) ? Money::mul($b['balance'], '-1') : $b['balance'];
+            // Mayor deuda (positivo) primero; créditos al final
+            $cmp = Money::compare($b['balance'], $a['balance']);
 
-            return Money::compare($absB, $absA);
+            return $cmp === 0 ? strcmp($a['name'], $b['name']) : $cmp;
         });
 
         return $out;
@@ -925,7 +946,8 @@ class ManagementDashboardService
                 'date_from' => $period['from'],
                 'date_to' => $period['to'],
             ]),
-            'clients' => route('clients.index'),
+            'clients' => route('clients.current-accounts', ['filter' => 'owing']),
+            'client_current_accounts' => route('clients.current-accounts', ['filter' => 'owing']),
         ];
     }
 

@@ -415,7 +415,11 @@ class DashboardService
             $items[] = ['level' => 'warn', 'text' => $stock['below_min'].' productos bajo mínimo', 'url' => route('stock.index')];
         }
         if ($clients['debtors_count'] > 0) {
-            $items[] = ['level' => 'warn', 'text' => $clients['debtors_count'].' clientes con deuda', 'url' => route('clients.index')];
+            $items[] = [
+                'level' => 'warn',
+                'text' => $clients['debtors_count'].' clientes con deuda',
+                'url' => route('clients.current-accounts', ['filter' => 'owing']),
+            ];
         }
         if ($suppliers['pending_count'] > 0) {
             $items[] = ['level' => 'warn', 'text' => $suppliers['pending_count'].' proveedores con saldo', 'url' => route('suppliers.index')];

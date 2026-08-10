@@ -1,14 +1,30 @@
 # Clientes y cuentas corrientes (Etapa 3)
 
-## Convención de saldo (perspectiva cliente)
+## Convención de saldo en DB (perspectiva cliente)
 
-| Valor | Significado |
+| Valor `signed_amount` | Significado |
 |-------|-------------|
 | Negativo | El cliente debe |
 | Positivo | Crédito a favor del cliente |
 | Cero | Sin saldo |
 
 Saldos **ARS** y **USD** son independientes. La equivalencia FX es informativa en el asiento; **nunca** convierte/mezcla saldos.
+
+## Presentación UI (11F-1) — semántica invertida en pantalla
+
+En ranking CC, dashboards y detalle, el **saldo de presentación** es `-signed_amount`:
+
+| Saldo UI | Significado | Color |
+|----------|-------------|-------|
+| Positivo | Nos deben (a cobrar) | Rojo (atención) |
+| Cero | Saldado | Neutro |
+| Negativo | A favor del cliente | Verde (favorable) |
+
+Resultados económicos/financieros siguen: + verde, − rojo, 0 neutro. Helper: `App\Support\UiSemantics`.
+
+**Antigüedad:** omitida en el ranking. No hay aging fiable (cobros no se aplican FIFO a cargos individuales).
+
+Ruta ranking: `/clientes/cuentas-corrientes` (`clients.current-accounts`).
 
 ## Tipos de movimiento CC
 
