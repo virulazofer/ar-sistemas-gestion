@@ -21,9 +21,16 @@ class SaleController extends Controller
 {
     public function __construct(private readonly SaleService $sales) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
-        $sales = Sale::query()->with('client')->latest('id')->paginate(25);
+        $sales = Sale::query()
+            ->with('client')
+            ->when($request->filled('date_from'), fn ($q) => $q->whereDate('sold_on', '>=', $request->string('date_from')))
+            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('sold_on', '<=', $request->string('date_to')))
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->string('status')))
+            ->latest('id')
+            ->paginate(25)
+            ->withQueryString();
 
         return view('sales.index', compact('sales'));
     }

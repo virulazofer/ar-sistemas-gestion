@@ -15,6 +15,10 @@
     --ar-danger: #b42318;
     --ar-success: #067647;
     --ar-shadow: 0 1px 2px rgb(16 24 40 / 6%);
+    /* KPI semánticos (independientes del acento de marca; safe light/dark) */
+    --ar-kpi-positive: #067647;
+    --ar-kpi-negative: #b42318;
+    --ar-kpi-zero: #5b6b7c;
 }
 
 .dark {
@@ -30,6 +34,9 @@
     --ar-danger: #f97066;
     --ar-success: #47cd89;
     --ar-shadow: 0 1px 2px rgb(0 0 0 / 35%);
+    --ar-kpi-positive: #47cd89;
+    --ar-kpi-negative: #f97066;
+    --ar-kpi-zero: #9aa8bc;
 }
 
 @layer base {
@@ -162,4 +169,28 @@
         border: 1px solid var(--ar-border);
         @apply overflow-hidden rounded-xl p-1.5;
     }
+}
+
+/* Dashboard de Gestión — colores semánticos KPI */
+.ar-kpi-card .ar-kpi-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-top: 0.25rem;
+}
+
+.ar-kpi-positive {
+    color: var(--ar-kpi-positive) !important;
+}
+
+.ar-kpi-negative {
+    color: var(--ar-kpi-negative) !important;
+}
+
+.ar-kpi-zero {
+    color: var(--ar-kpi-zero) !important;
+}
+
+.ar-row-active {
+    background: var(--ar-brand-soft);
 }

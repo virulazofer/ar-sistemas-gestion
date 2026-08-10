@@ -7,6 +7,7 @@ use App\Http\Controllers\Equipment\EquipmentController;
 use App\Http\Controllers\Equipment\EquipmentTypeController;
 use App\Http\Controllers\Inventory\StockController;
 use App\Http\Controllers\Purchases\PurchaseController;
+use App\Http\Controllers\Dashboard\ManagementDashboardController;
 use App\Http\Controllers\Dashboard\OperationsDashboardController;
 use App\Http\Controllers\Imports\HistoricalImportController;
 use App\Http\Controllers\Imports\ImportController;
@@ -46,6 +47,9 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/dashboard/operativo', OperationsDashboardController::class)
         ->middleware('permission:dashboard.view')
         ->name('dashboard.operations');
+    Route::get('/dashboard/gestion', ManagementDashboardController::class)
+        ->middleware('permission:dashboard.view')
+        ->name('dashboard.management');
     Route::post('/dashboard/cotizacion', [OperationsDashboardController::class, 'refreshRate'])
         ->middleware('permission:exchange_rates.create')
         ->name('dashboard.refresh-rate');

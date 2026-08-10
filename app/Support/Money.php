@@ -48,4 +48,49 @@ final class Money
     {
         return self::compare($amount, '0') > 0;
     }
+
+    public static function isZero(string $amount): bool
+    {
+        return self::compare($amount, '0') === 0;
+    }
+
+    public static function isNegative(string $amount): bool
+    {
+        return self::compare($amount, '0') < 0;
+    }
+
+    /**
+     * Formato AR: "$ 1.234.567,89" / "U$S 1.234.567,89". No mezcla monedas.
+     */
+    public static function formatAr(string $amount, string $currency = 'ARS'): string
+    {
+        $normalized = self::normalize($amount);
+        $formatted = number_format((float) $normalized, 2, ',', '.');
+
+        return strtoupper($currency) === 'USD'
+            ? 'U$S '.$formatted
+            : '$ '.$formatted;
+    }
+
+    /**
+     * Variación % vs base. Null si no hay base comparable (evita /0).
+     */
+    public static function percentChange(?string $current, ?string $previous): ?string
+    {
+        if ($previous === null || $current === null) {
+            return null;
+        }
+
+        $prev = self::normalize($previous);
+        $curr = self::normalize($current);
+
+        if (self::isZero($prev)) {
+            return null;
+        }
+
+        $delta = self::sub($curr, $prev);
+        $pct = self::mul(self::div($delta, $prev, 6), '100', 2);
+
+        return $pct;
+    }
 }

@@ -31,6 +31,10 @@
                         <svg class="ar-side-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg>
                         <span class="ar-side-label">Dashboard</span>
                     </a>
+                    <a href="{{ route('dashboard.management') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('dashboard.management') ? 'is-active' : '' }}">
+                        <svg class="ar-side-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5h4v14H4Zm6 0V9h4v10h-4Zm6 0v-7h4v7h-4Z"/></svg>
+                        <span class="ar-side-label">Dashboard de Gestión</span>
+                    </a>
                 @endcan
             </div>
         </div>
