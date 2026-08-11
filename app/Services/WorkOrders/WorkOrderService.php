@@ -2,7 +2,8 @@
 
 namespace App\Services\WorkOrders;
 
-use App\Enums\ClientLedgerType;
+use App\Enums\CommercialChargeType;
+use App\Enums\DocumentalStatus;
 use App\Enums\WorkOrderStatus;
 use App\Models\Client;
 use App\Models\Currency;
@@ -16,6 +17,7 @@ use App\Models\WorkOrderTask;
 use App\Models\WorkOrderType;
 use App\Services\AuditLogger;
 use App\Services\Clients\ClientLedgerService;
+use App\Services\Commercial\CommercialChargeService;
 use App\Services\Finance\ExchangeRateService;
 use App\Services\Inventory\FifoService;
 use App\Services\Inventory\InventoryService;
@@ -31,6 +33,7 @@ class WorkOrderService
         private readonly InventoryService $inventory,
         private readonly FifoService $fifo,
         private readonly ClientLedgerService $ledger,
+        private readonly CommercialChargeService $charges,
         private readonly ExchangeRateService $rates,
         private readonly AuditLogger $audit,
     ) {}
@@ -225,22 +228,22 @@ class WorkOrderService
 
             $ledgerId = null;
             if (Money::compare($chargeAmount, '0') > 0) {
-                $entry = $this->ledger->createEntry(
-                    $workOrder->client,
-                    ClientLedgerType::Charge,
-                    [
-                        'currency_code' => $chargeCurrency,
-                        'amount' => $chargeAmount,
-                        'entry_date' => $data['closed_at'] ?? now()->toDateString(),
-                        'description' => 'OT '.$workOrder->number.' — '.$workOrder->title,
-                        'work_order_id' => $workOrder->id,
-                        'force_fail' => ! empty($data['force_fail_charge']),
-                    ],
-                    sign: -1,
-                    requiresFinance: false,
-                    wrapTransaction: false,
-                );
-                $ledgerId = $entry->id;
+                if (! empty($data['force_fail_charge'])) {
+                    throw new RuntimeException('Falla simulada en cargo de OT.');
+                }
+                $charge = $this->charges->create([
+                    'client_id' => $workOrder->client_id,
+                    'charge_type' => CommercialChargeType::Repair->value,
+                    'concept' => 'OT '.$workOrder->number.' — '.$workOrder->title,
+                    'amount' => $chargeAmount,
+                    'currency_code' => $chargeCurrency,
+                    'charged_on' => $data['closed_at'] ?? now()->toDateString(),
+                    'work_order_id' => $workOrder->id,
+                    'documental_status' => DocumentalStatus::None->value,
+                    'apply_available_credit' => true,
+                    'wrap_transaction' => false,
+                ]);
+                $ledgerId = $charge->client_ledger_entry_id;
             }
 
             if (! empty($data['force_fail'])) {

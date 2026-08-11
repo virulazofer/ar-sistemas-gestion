@@ -51,8 +51,21 @@
                 <div>
                     <label class="ar-label">Modo</label>
                     <select name="payment_mode" class="ar-input" required>
-                        <option value="credit">Crédito (cargo CC)</option>
-                        <option value="cash">Contado (pago inmediato)</option>
+                        <option value="credit">Crédito (CC IN, sin ingreso)</option>
+                        <option value="cash">Contado (cobro total)</option>
+                        <option value="partial">Parcial (cobro + resto CC)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="ar-label">Importe cobrado (parcial)</label>
+                    <input type="number" step="0.01" min="0.01" name="amount_paid" class="ar-input">
+                </div>
+                <div>
+                    <label class="ar-label">Documental</label>
+                    <select name="documental_status" class="ar-input">
+                        @foreach (\App\Enums\DocumentalStatus::cases() as $ds)
+                            <option value="{{ $ds->value }}">{{ $ds->label() }}</option>
+                        @endforeach
                     </select>
                 </div>
                 <div>

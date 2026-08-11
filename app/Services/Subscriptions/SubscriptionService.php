@@ -2,7 +2,8 @@
 
 namespace App\Services\Subscriptions;
 
-use App\Enums\ClientLedgerType;
+use App\Enums\CommercialChargeType;
+use App\Enums\DocumentalStatus;
 use App\Enums\SubscriptionPeriodicity;
 use App\Enums\SubscriptionStatus;
 use App\Models\Client;
@@ -10,6 +11,7 @@ use App\Models\Subscription;
 use App\Models\SubscriptionPeriod;
 use App\Services\AuditLogger;
 use App\Services\Clients\ClientLedgerService;
+use App\Services\Commercial\CommercialChargeService;
 use App\Support\Money;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -21,6 +23,7 @@ class SubscriptionService
 {
     public function __construct(
         private readonly ClientLedgerService $ledger,
+        private readonly CommercialChargeService $charges,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -134,20 +137,6 @@ class SubscriptionService
             }
 
             $amount = Money::normalize((string) $subscription->amount);
-            $entry = $this->ledger->createEntry(
-                $subscription->client,
-                ClientLedgerType::Charge,
-                [
-                    'currency_code' => $subscription->currency_code,
-                    'amount' => $amount,
-                    'entry_date' => $periodStart->toDateString(),
-                    'description' => 'Abono '.$subscription->name.' · '.$periodKey,
-                    'subscription_id' => $subscription->id,
-                ],
-                sign: -1,
-                requiresFinance: false,
-                wrapTransaction: false,
-            );
 
             $period = SubscriptionPeriod::query()->create([
                 'subscription_id' => $subscription->id,
@@ -156,10 +145,31 @@ class SubscriptionService
                 'period_end' => $periodEnd->toDateString(),
                 'amount' => $amount,
                 'currency_code' => $subscription->currency_code,
-                'client_ledger_entry_id' => $entry->id,
+                'client_ledger_entry_id' => null,
+                'commercial_charge_id' => null,
                 'status' => 'generated',
+                'documental_status' => DocumentalStatus::None->value,
                 'generated_at' => now(),
                 'generated_by' => Auth::id(),
+            ]);
+
+            $charge = $this->charges->create([
+                'client_id' => $subscription->client_id,
+                'charge_type' => CommercialChargeType::Subscription->value,
+                'concept' => 'Abono '.$subscription->name.' · '.$periodKey,
+                'amount' => $amount,
+                'currency_code' => $subscription->currency_code,
+                'charged_on' => $periodStart->toDateString(),
+                'subscription_id' => $subscription->id,
+                'subscription_period_id' => $period->id,
+                'documental_status' => DocumentalStatus::None->value,
+                'apply_available_credit' => true,
+                'wrap_transaction' => false,
+            ]);
+
+            $period->update([
+                'client_ledger_entry_id' => $charge->client_ledger_entry_id,
+                'commercial_charge_id' => $charge->id,
             ]);
 
             $next = $periodStart->copy()->addMonthsNoOverflow($subscription->periodicity->months());
@@ -169,10 +179,11 @@ class SubscriptionService
             $this->audit->log('subscription_period_generated', $period, null, [
                 'period_key' => $periodKey,
                 'amount' => $amount,
-                'ledger_id' => $entry->id,
+                'ledger_id' => $charge->client_ledger_entry_id,
+                'commercial_charge_id' => $charge->id,
             ], 'Cargo de abono generado');
 
-            return $period;
+            return $period->fresh();
         });
     }
 

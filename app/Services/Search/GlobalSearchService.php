@@ -400,9 +400,11 @@ class GlobalSearchService
         $rows = (clone $query)->orderBy('name')->limit(self::RANK_CAP)->get();
 
         $items = $rows->map(function (Client $c) use ($needle) {
-            $label = $c->name;
+            $label = $c->labelWithCode();
             $rank = min(
                 $this->matchRank($label, $needle),
+                $this->matchRank($c->codeFormatted(), $needle),
+                $this->matchRank((string) $c->name, $needle),
                 $this->matchRank((string) $c->business_name, $needle),
                 $this->matchRank((string) $c->cuit, $needle),
                 $this->matchRank((string) $c->dni, $needle),
@@ -608,12 +610,19 @@ class GlobalSearchService
     {
         $like = '%'.$needle.'%';
 
-        return Client::query()->where(function ($query) use ($like) {
+        return Client::query()->where(function ($query) use ($like, $needle) {
             $query->where('name', 'like', $like)
                 ->orWhere('business_name', 'like', $like)
                 ->orWhere('cuit', 'like', $like)
                 ->orWhere('dni', 'like', $like)
                 ->orWhere('email', 'like', $like);
+            $code = ltrim($needle, '0');
+            if ($code !== '' && ctype_digit($code)) {
+                $query->orWhere('code', (int) $code);
+            }
+            if (ctype_digit($needle)) {
+                $query->orWhere('code', (int) $needle);
+            }
         });
     }
 

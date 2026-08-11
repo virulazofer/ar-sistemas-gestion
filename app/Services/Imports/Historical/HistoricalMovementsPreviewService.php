@@ -20,6 +20,11 @@ class HistoricalMovementsPreviewService
         private readonly ClientDetectionService $clients,
         private readonly HistoricalRootCauseAnalyzer $rootCauses,
         private readonly HistoricalMappingRuleService $rules,
+        private readonly HistoricalSaleSemantics $saleSemantics,
+        private readonly HistoricalRecurringServicesAnalyzer $recurringServices,
+        private readonly HistoricalAuthorizedClosureApplicator $closureApplicator,
+        private readonly HistoricalScopeClassifier $scopeClassifier,
+        private readonly HistoricalOperationalStatusClassifier $operationalStatus,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -68,7 +73,10 @@ class HistoricalMovementsPreviewService
             'period_to' => $periodTo,
             'status' => 'preview',
             'rows_total' => $preview['summary']['rows_read'],
-            'rows_valid' => $preview['summary']['green'] + $preview['summary']['yellow'],
+            'rows_valid' => ($preview['summary']['green'] ?? 0)
+                + ($preview['summary']['inferred'] ?? 0)
+                + ($preview['summary']['corrected'] ?? 0)
+                + ($preview['summary']['yellow'] ?? 0),
             'rows_invalid' => $preview['summary']['red'],
             'rows_duplicate' => $preview['summary']['excluded'],
             'rows_green' => $preview['summary']['green'],
@@ -85,11 +93,18 @@ class HistoricalMovementsPreviewService
                 'subscriptions_detected' => $preview['subscriptions_detected'],
                 'applied_rules' => $preview['applied_rules'],
                 'rows_sample_green' => array_slice($preview['rows_by_status']['green'], 0, 30),
+                'rows_sample_inferred' => array_slice($preview['rows_by_status']['inferred'] ?? [], 0, 30),
+                'rows_sample_corrected' => array_slice($preview['rows_by_status']['corrected'] ?? [], 0, 30),
                 'rows_sample_yellow' => array_slice($preview['rows_by_status']['yellow'], 0, 40),
                 'rows_sample_red' => array_slice($preview['rows_by_status']['red'], 0, 60),
+                'rows_sample_pending_complete' => array_slice($preview['rows_by_status']['pending_complete'] ?? [], 0, 40),
                 'rows_all_path' => $preview['rows_all_path'],
                 'confirm_blocked' => true,
                 'confirm_blocked_reason' => 'Etapa 11E: confirmación definitiva de movimientos deshabilitada hasta autorización expresa.',
+                'sale_semantics_report' => $preview['sale_semantics_report'] ?? [],
+                'recurring_services' => $preview['recurring_services'] ?? [],
+                'authorized_closure' => $preview['authorized_closure'] ?? [],
+                'scope_resolution' => $preview['scope_resolution'] ?? [],
             ],
             'classification_summary' => array_merge($preview['summary'], [
                 'root_cause_groups' => [
@@ -103,6 +118,16 @@ class HistoricalMovementsPreviewService
                         'label' => $g['label'],
                         'count' => $g['count'],
                     ], $preview['root_cause_groups']['red'] ?? []),
+                    'pending_complete' => array_map(fn ($g) => [
+                        'cause' => $g['cause'],
+                        'label' => $g['label'],
+                        'count' => $g['count'],
+                    ], $preview['root_cause_groups']['pending_complete'] ?? []),
+                ],
+                'scope_resolution_summary' => [
+                    'to_personal' => $preview['scope_resolution']['to_personal'] ?? 0,
+                    'to_professional' => $preview['scope_resolution']['to_professional'] ?? 0,
+                    'still_ambiguous' => $preview['scope_resolution']['still_ambiguous'] ?? 0,
                 ],
             ]),
             'reconciliation_payload' => array_merge($preview['reconciliation'], [
@@ -114,6 +139,7 @@ class HistoricalMovementsPreviewService
                 'period_from' => $periodFrom,
                 'period_to' => $periodTo,
                 'confirm_enabled' => false,
+                'authorized_closure_applied' => true,
             ],
             'user_id' => $userId,
         ]);
@@ -122,6 +148,7 @@ class HistoricalMovementsPreviewService
             'green' => $batch->rows_green,
             'yellow' => $batch->rows_yellow,
             'red' => $batch->rows_red,
+            'pending_complete' => $preview['summary']['pending_complete'] ?? 0,
         ], 'Vista previa histórica generada (sin confirmar)');
 
         return $batch;
@@ -140,8 +167,22 @@ class HistoricalMovementsPreviewService
     public function confirm(ImportBatch $batch): never
     {
         throw new InvalidArgumentException(
-            'Confirmación de movimientos históricos bloqueada en esta etapa. Se requiere autorización expresa.'
+            'Confirmación de movimientos históricos bloqueada. Usá confirmAuthorizedHistoricalImport() con token de autorización 11E.'
         );
+    }
+
+    /**
+     * Desbloqueo puntual (no permanente): solo con token de autorización 11E + gate OK.
+     *
+     * @return array{batch: ImportBatch, gate: array<string, mixed>, import: array<string, mixed>}
+     */
+    public function confirmAuthorizedHistoricalImport(
+        ImportBatch $batch,
+        string $authorizationToken,
+        ?int $actingUserId = null,
+    ): array {
+        return app(HistoricalMovementsConfirmService::class)
+            ->confirmAuthorizedHistoricalImport($batch, $authorizationToken, $actingUserId);
     }
 
     /**
@@ -170,7 +211,10 @@ class HistoricalMovementsPreviewService
 
         $batch->update([
             'rows_total' => $preview['summary']['rows_read'],
-            'rows_valid' => $preview['summary']['green'] + $preview['summary']['yellow'],
+            'rows_valid' => ($preview['summary']['green'] ?? 0)
+                + ($preview['summary']['inferred'] ?? 0)
+                + ($preview['summary']['corrected'] ?? 0)
+                + ($preview['summary']['yellow'] ?? 0),
             'rows_invalid' => $preview['summary']['red'],
             'rows_duplicate' => $preview['summary']['excluded'],
             'rows_green' => $preview['summary']['green'],
@@ -185,13 +229,20 @@ class HistoricalMovementsPreviewService
                 'subscriptions_detected' => $preview['subscriptions_detected'],
                 'applied_rules' => $preview['applied_rules'],
                 'rows_sample_green' => array_slice($preview['rows_by_status']['green'], 0, 30),
+                'rows_sample_inferred' => array_slice($preview['rows_by_status']['inferred'] ?? [], 0, 30),
+                'rows_sample_corrected' => array_slice($preview['rows_by_status']['corrected'] ?? [], 0, 30),
                 'rows_sample_yellow' => array_slice($preview['rows_by_status']['yellow'], 0, 40),
                 'rows_sample_red' => array_slice($preview['rows_by_status']['red'], 0, 60),
+                'rows_sample_pending_complete' => array_slice($preview['rows_by_status']['pending_complete'] ?? [], 0, 40),
                 'rows_all_path' => $preview['rows_all_path'],
                 'confirm_blocked' => true,
                 'confirm_blocked_reason' => 'Etapa 11E: confirmación definitiva de movimientos deshabilitada hasta autorización expresa.',
                 'reprocessed_at' => now()->toDateTimeString(),
                 'decisions_applied' => $preview['decisions_applied'] ?? 0,
+                'sale_semantics_report' => $preview['sale_semantics_report'] ?? [],
+                'recurring_services' => $preview['recurring_services'] ?? [],
+                'authorized_closure' => $preview['authorized_closure'] ?? [],
+                'scope_resolution' => $preview['scope_resolution'] ?? [],
             ],
             'classification_summary' => array_merge($preview['summary'], [
                 'root_cause_groups' => [
@@ -201,6 +252,14 @@ class HistoricalMovementsPreviewService
                     'red' => array_map(fn ($g) => [
                         'cause' => $g['cause'], 'label' => $g['label'], 'count' => $g['count'],
                     ], $preview['root_cause_groups']['red'] ?? []),
+                    'pending_complete' => array_map(fn ($g) => [
+                        'cause' => $g['cause'], 'label' => $g['label'], 'count' => $g['count'],
+                    ], $preview['root_cause_groups']['pending_complete'] ?? []),
+                ],
+                'scope_resolution_summary' => [
+                    'to_personal' => $preview['scope_resolution']['to_personal'] ?? 0,
+                    'to_professional' => $preview['scope_resolution']['to_professional'] ?? 0,
+                    'still_ambiguous' => $preview['scope_resolution']['still_ambiguous'] ?? 0,
                 ],
             ]),
             'reconciliation_payload' => array_merge($preview['reconciliation'], [
@@ -208,6 +267,7 @@ class HistoricalMovementsPreviewService
             ]),
             'options' => array_merge($batch->options ?? [], [
                 'confirm_enabled' => false,
+                'authorized_closure_applied' => true,
                 'reprocessed_at' => now()->toDateTimeString(),
             ]),
         ]);
@@ -236,10 +296,23 @@ class HistoricalMovementsPreviewService
         $spreadsheet = IOFactory::load($path);
         $sheetName = (string) config('historical_import.movements_sheet', 'Movimientos');
         $sheet = $spreadsheet->getSheetByName($sheetName) ?? $spreadsheet->getActiveSheet();
+        // No calcular toda la hoja (SUMIF rotos en el Excel real). Solo resolver fórmulas de pagos_tc.
         $matrix = $sheet->toArray(null, false, false, false);
-        $spreadsheet->disconnectWorksheets();
-
         $start = max(0, ((int) config('historical_import.movements_data_start_row', 4)) - 1);
+        for ($ri = $start; $ri < count($matrix); $ri++) {
+            $rawPagos = $matrix[$ri][9] ?? null;
+            if (is_string($rawPagos) && str_starts_with(ltrim($rawPagos), '=')) {
+                try {
+                    $calc = $sheet->getCell([10, $ri + 1])->getCalculatedValue();
+                    if (is_numeric($calc)) {
+                        $matrix[$ri][9] = (float) $calc;
+                    }
+                } catch (Throwable) {
+                    // Conservar fórmula; num() dará 0 y la regla de tarjeta marcará sin importe.
+                }
+            }
+        }
+        $spreadsheet->disconnectWorksheets();
         $rows = [];
         $excelTotals = [
             'ingresos' => 0.0,
@@ -257,9 +330,18 @@ class HistoricalMovementsPreviewService
         $financialSeen = [];
         $suppliers = [];
         $unknownAccounts = [];
-        $byStatus = ['green' => [], 'yellow' => [], 'red' => [], 'excluded' => []];
+        $byStatus = [
+            'green' => [],
+            'inferred' => [],
+            'corrected' => [],
+            'yellow' => [],
+            'red' => [],
+            'pending_complete' => [],
+            'excluded' => [],
+        ];
         $subscriptionBuckets = [];
         $decisionsApplied = 0;
+        $monthContext = null;
 
         $dateDecisions = [];
         $complexDecisions = [];
@@ -291,7 +373,14 @@ class HistoricalMovementsPreviewService
             if ($concepto === '' && $cuenta === '' && $subcuenta === '' && ($fechaRaw === null || $fechaRaw === '')) {
                 continue;
             }
+            // Encabezados de mes pueden venir en FECHA o en CONCEPTO
+            $fechaAsText = is_string($fechaRaw) ? trim($fechaRaw) : '';
+            if ($fechaAsText !== '' && preg_match('/^('.$monthNames.')$/iu', $fechaAsText)) {
+                $monthContext = mb_strtolower($fechaAsText);
+                continue;
+            }
             if ($concepto !== '' && preg_match('/^('.$monthNames.')$/iu', $concepto)) {
+                $monthContext = mb_strtolower($concepto);
                 continue;
             }
             if ($subcuenta !== '' && preg_match('/^('.$monthNames.')$/iu', $subcuenta) && $concepto === '') {
@@ -349,6 +438,111 @@ class HistoricalMovementsPreviewService
                 'venta' => $this->num($raw[12] ?? null),
                 'ut_ventas' => $this->num($raw[13] ?? null),
             ];
+
+            $userExclusion = config('historical_row_exclusions.user_excluded_source_rows.'.$sourceRow);
+            if (is_array($userExclusion)) {
+                $exclUser = [
+                    'source_file' => basename($path),
+                    'sheet' => $sheetName,
+                    'source_row' => $sourceRow,
+                    'date' => $date['iso'] ?? null,
+                    'date_raw' => $fechaRaw,
+                    'date_original' => $date['iso'] ?? null,
+                    'month_context' => $monthContext,
+                    'concepto' => $concepto,
+                    'excel_cuenta_category' => $cuenta,
+                    'excel_subcuenta_account' => $subcuenta,
+                    'amounts' => $amounts,
+                    'review_status' => ImportReviewStatus::Excluded->value,
+                    'flags' => ['excluida_por_usuario'],
+                    'root_cause' => 'excluida_por_usuario',
+                    'interpretation' => [
+                        'kind' => 'excluded',
+                        'finance_income' => 0.0,
+                        'finance_expense' => 0.0,
+                        'cc_charge' => 0.0,
+                        'cc_payment' => 0.0,
+                        'would_generate' => [],
+                        'notes' => [
+                            (string) ($userExclusion['reason'] ?? 'Excluida por decisión del usuario.'),
+                            'No es candidato de importación; trazabilidad conservada.',
+                        ],
+                    ],
+                    'trace' => [
+                        'archivo' => basename($path),
+                        'hoja' => $sheetName,
+                        'fila' => $sourceRow,
+                        'exclusion' => 'user_decision',
+                    ],
+                ];
+                $rows[] = $exclUser;
+                $byStatus['excluded'][] = $exclUser;
+                continue;
+            }
+
+            // Importes 0 + sin fecha = anotación incompleta (no rojo, no financiero).
+            // Intereses ganados (asiento de ingresos/utilidades) se conserva aunque importe = 0.
+            if ($this->isPendingCompleteAnnotation($date, $amounts, $concepto, $cuenta)) {
+                $rowHash = hash('sha256', implode('|', [
+                    $sheetName, $sourceRow, (string) $fechaRaw, $concepto, $cuenta, $subcuenta,
+                    json_encode($amounts),
+                ]));
+                $pending = [
+                    'source_file' => basename($path),
+                    'sheet' => $sheetName,
+                    'source_row' => $sourceRow,
+                    'row_hash' => $rowHash,
+                    'date' => null,
+                    'date_raw' => $fechaRaw,
+                    'date_original' => null,
+                    'suggested_date' => null,
+                    'date_suggestion_reason' => null,
+                    'month_context' => $monthContext,
+                    'concepto' => $concepto,
+                    'excel_cuenta_category' => $cuenta,
+                    'excel_subcuenta_account' => $subcuenta,
+                    'amounts' => $amounts,
+                    'review_status' => ImportReviewStatus::PendingComplete->value,
+                    'flags' => ['pendiente_completar'],
+                    'root_cause' => 'pendiente_completar',
+                    'sale_kind' => null,
+                    'proposed_scope' => null,
+                    'scope_ambiguous' => false,
+                    'client' => null,
+                    'interpretation' => [
+                        'kind' => 'pendiente_completar',
+                        'finance_income' => 0.0,
+                        'finance_expense' => 0.0,
+                        'cc_charge' => 0.0,
+                        'cc_payment' => 0.0,
+                        'economic_venta' => 0.0,
+                        'economic_utilidad' => 0.0,
+                        'merca_in' => 0.0,
+                        'merca_out' => 0.0,
+                        'excel_cc_in' => 0.0,
+                        'excel_cc_out' => 0.0,
+                        'corrections' => [],
+                        'flags' => ['pendiente_completar'],
+                        'would_generate' => [],
+                        'notes' => [
+                            'Anotación incompleta del usuario — pendiente de completar.',
+                            'No genera movimiento financiero ni afecta conciliación.',
+                            'Conservar concepto y datos disponibles; no eliminar.',
+                        ],
+                        'components' => null,
+                    ],
+                    'trace' => [
+                        'archivo' => basename($path),
+                        'hoja' => $sheetName,
+                        'fila' => $sourceRow,
+                    ],
+                ];
+                $rows[] = $pending;
+                $byStatus['pending_complete'][] = $pending;
+                continue;
+            }
+
+            // Solo filas con impacto económico/potencial suman a totales Excel de conciliación.
             foreach ($amounts as $k => $v) {
                 $excelTotals[$k] += $v;
             }
@@ -365,6 +559,10 @@ class HistoricalMovementsPreviewService
             }
 
             $client = $this->clients->extractFromConcept($concepto, $cuenta === 'CC' ? $subcuenta : $subcuenta);
+            $openingCc = $this->saleSemantics->matchConfirmedOpeningCcBalance($sourceRow, $concepto, $amounts);
+            if ($openingCc && ! empty($openingCc['client'])) {
+                $client = (string) $openingCc['client'];
+            }
             if ($client) {
                 $clientNames[] = $client;
             }
@@ -379,6 +577,54 @@ class HistoricalMovementsPreviewService
                 }
             }
 
+            $dateOriginalIso = $date['iso'] ?? null;
+            $dateAppliedFromSuggestion = false;
+            $dateInferredMonthEnd = false;
+            $dateInferenceRule = null;
+            $dateHint = null;
+            $dateDecisionAction = $dateDecision?->payload['action'] ?? null;
+
+            // Fecha vacía + importe + bloque mensual → último día del mes (regla histórica confirmada).
+            if (! ($date['ok'] ?? false)
+                && ! in_array($dateDecisionAction, ['accept', 'correct', 'exclude'], true)
+            ) {
+                $monthEndHint = $this->saleSemantics->suggestMonthEndClosureDate(
+                    $dateOriginalIso,
+                    $monthContext,
+                    $sourceRow,
+                    2026
+                );
+                if (! empty($monthEndHint['suggested'])) {
+                    $date = ['ok' => true, 'iso' => $monthEndHint['suggested'], 'error' => null];
+                    $dateInferredMonthEnd = true;
+                    $dateInferenceRule = $monthEndHint['rule'] ?? 'fecha_inferida_por_cierre_mensual';
+                    $dateHint = [
+                        'suggested' => $monthEndHint['suggested'],
+                        'reason' => $monthEndHint['reason'],
+                        'auto_safe' => true,
+                    ];
+                }
+            }
+
+            if (! isset($dateHint)) {
+                $dateHint = $this->saleSemantics->suggestDateCorrection(
+                    $date['iso'] ?? $dateOriginalIso,
+                    $concepto,
+                    $cuenta,
+                    $subcuenta,
+                    $monthContext
+                );
+            }
+
+            if (! $dateInferredMonthEnd
+                && ! empty($dateHint['suggested'])
+                && ! in_array($dateDecisionAction, ['accept', 'correct', 'exclude'], true)
+            ) {
+                // Usuario confirmó las fechas propuestas (16 filas): aplicar en preview con trazabilidad.
+                $date = ['ok' => true, 'iso' => $dateHint['suggested'], 'error' => null];
+                $dateAppliedFromSuggestion = true;
+            }
+
             $classification = $this->classifyRow([
                 'date' => $date,
                 'concepto' => $concepto,
@@ -391,10 +637,76 @@ class HistoricalMovementsPreviewService
                 'period_to' => $periodTo,
                 'cutover_date' => $cutoverDate,
                 'date_decision' => $dateDecision?->payload,
+                'month_context' => $monthContext,
+                'is_opening' => $this->saleSemantics->isOpeningOrCarryforward($concepto, $cuenta, $subcuenta),
+                'source_row' => $sourceRow,
             ]);
 
-            // Scope: row decision overrides concept rule overrides category default
+            if ($dateInferredMonthEnd || $dateAppliedFromSuggestion) {
+                $flagToAdd = $dateInferredMonthEnd ? 'fecha_inferida_cierre_mensual' : 'fecha_aplicada_preview';
+                $classification['flags'] = array_values(array_unique(array_merge(
+                    array_diff($classification['flags'], ['fecha_sospechosa', 'fecha_corregible']),
+                    [$flagToAdd]
+                )));
+                $materialFlags = array_diff(
+                    $classification['flags'],
+                    ['fecha_aplicada_preview', 'fecha_inferida_cierre_mensual', 'cc_movimiento']
+                );
+                if ($materialFlags === []) {
+                    $classification['status'] = ImportReviewStatus::Green;
+                } elseif ($classification['status'] === ImportReviewStatus::Red
+                    && ! in_array('cliente_ambiguo', $classification['flags'], true)
+                    && ! (
+                        in_array('utilidad_inconsistente', $classification['flags'], true)
+                        && ! in_array('valor_historico_corregido_por_interpretacion', $classification['flags'], true)
+                    )
+                ) {
+                    $classification['status'] = ImportReviewStatus::Yellow;
+                }
+            } elseif (($dateHint['suggested'] ?? null) || ($dateHint['reason'] ?? null)) {
+                if (! in_array('fecha_sospechosa', $classification['flags'], true)
+                    && ($dateHint['suggested'] ?? null)
+                    && ! in_array($dateDecisionAction, ['accept', 'correct'], true)
+                ) {
+                    $classification['flags'][] = 'fecha_corregible';
+                    if ($classification['status'] === ImportReviewStatus::Green) {
+                        $classification['status'] = ImportReviewStatus::Yellow;
+                    }
+                }
+            }
+
+            // Intereses ganados con importe 0: asiento válido de ingresos/utilidades.
+            if ($this->isInteresesGanados($concepto, $cuenta)) {
+                $classification['flags'] = array_values(array_unique(array_merge(
+                    $classification['flags'],
+                    ['asiento_intereses_ganados']
+                )));
+                if (($amounts['ingresos'] ?? 0) <= 0.0001
+                    && ($amounts['egresos'] ?? 0) <= 0.0001
+                    && ($date['ok'] ?? false)
+                ) {
+                    $classification['flags'][] = 'asiento_ingresos_cero';
+                    $classification['flags'] = array_values(array_unique($classification['flags']));
+                    if ($classification['status'] === ImportReviewStatus::Red) {
+                        $classification['status'] = ImportReviewStatus::Green;
+                    }
+                }
+            }
+
+            // Scope: row decision > scope classifier (config) > DB concept rules > category default
             $scopeDecision = $scopeDecisions[$sourceRow] ?? null;
+            $scopeTrace = [
+                'original_classification' => in_array('ambito_dudoso', $classification['flags'], true)
+                    ? 'ambito_dudoso'
+                    : 'categoria_default',
+                'proposed_scope_before_rules' => $classification['scope'],
+                'rule_id' => null,
+                'rule_label' => null,
+                'reason' => null,
+                'precedence' => null,
+                'override_allowed' => true,
+                'final_scope' => $classification['scope'],
+            ];
             if ($scopeDecision) {
                 $decisionsApplied++;
                 $scopeVal = $scopeDecision->payload['scope'] ?? null;
@@ -402,6 +714,11 @@ class HistoricalMovementsPreviewService
                     $classification['scope'] = $scopeVal;
                     $classification['scope_ambiguous'] = false;
                     $classification['flags'] = array_values(array_diff($classification['flags'], ['ambito_dudoso']));
+                    $scopeTrace['rule_id'] = 'preview_decision_scope';
+                    $scopeTrace['rule_label'] = 'Decisión de preview (override manual)';
+                    $scopeTrace['reason'] = 'ImportPreviewDecision scope';
+                    $scopeTrace['precedence'] = '1_row_override';
+                    $scopeTrace['final_scope'] = $scopeVal;
                     if ($classification['flags'] === [] && $classification['status'] === ImportReviewStatus::Yellow) {
                         $classification['status'] = ImportReviewStatus::Green;
                     } elseif ($classification['status'] === ImportReviewStatus::Yellow
@@ -410,14 +727,46 @@ class HistoricalMovementsPreviewService
                     }
                 }
             } else {
-                $ruleScope = $this->rules->resolveScopeOverride($concepto, $cuenta);
-                if ($ruleScope) {
-                    $classification['scope'] = $ruleScope;
+                $wasAmbiguous = in_array('ambito_dudoso', $classification['flags'], true);
+                $classified = $this->scopeClassifier->classify(
+                    $sourceRow,
+                    $concepto,
+                    $cuenta,
+                    $client,
+                    $wasAmbiguous
+                );
+                if ($classified && in_array($classified['scope'] ?? '', ['personal', 'professional'], true)) {
+                    $classification['scope'] = $classified['scope'];
                     $classification['scope_ambiguous'] = false;
                     $classification['flags'] = array_values(array_diff($classification['flags'], ['ambito_dudoso']));
+                    $scopeTrace = array_merge($scopeTrace, [
+                        'rule_id' => $classified['rule_id'],
+                        'rule_label' => $classified['rule_label'],
+                        'reason' => $classified['reason'],
+                        'precedence' => $classified['precedence'],
+                        'original_classification' => $classified['original_classification'] ?? $scopeTrace['original_classification'],
+                        'final_scope' => $classified['scope'],
+                        'override_allowed' => true,
+                    ]);
                     if ($classification['status'] === ImportReviewStatus::Yellow
                         && count(array_diff($classification['flags'], ['ambito_dudoso'])) === 0) {
                         $classification['status'] = ImportReviewStatus::Green;
+                    }
+                } else {
+                    $ruleScope = $this->rules->resolveScopeOverride($concepto, $cuenta);
+                    if ($ruleScope) {
+                        $classification['scope'] = $ruleScope;
+                        $classification['scope_ambiguous'] = false;
+                        $classification['flags'] = array_values(array_diff($classification['flags'], ['ambito_dudoso']));
+                        $scopeTrace['rule_id'] = 'db_scope_concept';
+                        $scopeTrace['rule_label'] = 'Regla DB scope_concept';
+                        $scopeTrace['reason'] = 'ImportMappingRule scope_concept';
+                        $scopeTrace['precedence'] = '3_concepto_especifico';
+                        $scopeTrace['final_scope'] = $ruleScope;
+                        if ($classification['status'] === ImportReviewStatus::Yellow
+                            && count(array_diff($classification['flags'], ['ambito_dudoso'])) === 0) {
+                            $classification['status'] = ImportReviewStatus::Green;
+                        }
                     }
                 }
             }
@@ -439,7 +788,20 @@ class HistoricalMovementsPreviewService
                 $client,
                 $complexDecision?->payload,
                 $cardDecision?->payload,
+                $sourceRow,
+                $concepto,
             );
+
+            // Reintegro personal: reclasificar flags/status desde interpretación
+            if (($interpreted['kind'] ?? '') === 'reintegro_gasto_personal') {
+                $classification['flags'] = array_values(array_unique(array_merge(
+                    array_diff($classification['flags'], ['ambito_dudoso']),
+                    $interpreted['flags'] ?? ['reintegro_gasto_personal']
+                )));
+                $classification['status'] = ImportReviewStatus::Yellow;
+                $classification['scope'] = 'personal';
+                $classification['scope_ambiguous'] = false;
+            }
 
             if ($complexDecision) {
                 $decisionsApplied++;
@@ -450,15 +812,80 @@ class HistoricalMovementsPreviewService
             }
             if ($cardDecision) {
                 $decisionsApplied++;
-                $classification['flags'] = array_values(array_diff($classification['flags'], ['pago_tarjeta_posible']));
+                $classification['flags'] = array_values(array_diff($classification['flags'], [
+                    'pago_tarjeta_posible',
+                    'pago_resumen_tarjeta_confirmado',
+                ]));
                 if ($classification['flags'] === []) {
                     $classification['status'] = ImportReviewStatus::Green;
                 } elseif ($classification['status'] === ImportReviewStatus::Yellow
-                    && count(array_diff($classification['flags'], ['pago_tarjeta_posible', 'ambito_dudoso'])) === 0
+                    && count(array_diff($classification['flags'], ['pago_tarjeta_posible', 'pago_resumen_tarjeta_confirmado', 'ambito_dudoso'])) === 0
                     && ! in_array('ambito_dudoso', $classification['flags'], true)) {
                     $classification['status'] = ImportReviewStatus::Green;
                 }
                 $classification['flags'][] = 'tarjeta_resuelta';
+            }
+
+            // Pago de resumen (regla aprobada): fusionar flags de excepción desde interpretación.
+            if (($interpreted['kind'] ?? '') === 'card_statement_payment') {
+                $classification['flags'] = array_values(array_unique(array_merge(
+                    array_diff($classification['flags'], ['pago_tarjeta_posible']),
+                    $interpreted['flags'] ?? ['pago_resumen_tarjeta_confirmado']
+                )));
+                // Importe desconocido confirmado → pendiente (no amarillo).
+                if (in_array('importe_pago_tarjeta_desconocido', $classification['flags'], true)) {
+                    $classification['status'] = ImportReviewStatus::PendingComplete;
+                    $classification['flags'] = array_values(array_unique(array_merge(
+                        array_diff($classification['flags'], [
+                            'pago_tarjeta_sin_importe',
+                            'pago_tarjeta_sin_cuenta_pago',
+                            'pago_tarjeta_sin_tarjeta',
+                        ]),
+                        ['importe_pago_tarjeta_desconocido', 'pendiente_completar']
+                    )));
+                }
+            }
+
+            // Saldo de apertura CC confirmado: trazabilidad + listo (no amarillo).
+            if (($interpreted['kind'] ?? '') === 'saldo_apertura_cc'
+                || in_array('cc_apertura_confirmada', $interpreted['flags'] ?? [], true)
+            ) {
+                $classification['flags'] = array_values(array_unique(array_merge(
+                    array_diff($classification['flags'], ['fecha_apertura_revision', 'fecha_corregible']),
+                    $interpreted['flags'] ?? ['cc_apertura_confirmada', 'confirmed_opening_cc_balance']
+                )));
+                if (! empty($interpreted['client'])) {
+                    $client = (string) $interpreted['client'];
+                }
+            }
+
+            // Saldo apertura mercadería / CC-venta-cobro / cliente CC confirmados.
+            if (in_array(($interpreted['kind'] ?? ''), [
+                'saldo_apertura_mercaderia',
+                'cc_cancelacion_con_cobro',
+                'cc_cancelacion_deuda',
+                'cc_cargo_cliente',
+            ], true)
+                || in_array('cc_apertura_mercaderia_confirmada', $interpreted['flags'] ?? [], true)
+                || in_array('valor_historico_corregido_por_interpretacion', $interpreted['flags'] ?? [], true)
+            ) {
+                $classification['flags'] = array_values(array_unique(array_merge(
+                    array_diff($classification['flags'], [
+                        'fecha_apertura_revision',
+                        'fecha_corregible',
+                        'cuenta_desconocida',
+                        'cc_omitida_probable',
+                        'cobro_desconocido',
+                        'cliente_ambiguo',
+                    ]),
+                    $interpreted['flags'] ?? []
+                )));
+                if (! empty($interpreted['client'])) {
+                    $client = (string) $interpreted['client'];
+                }
+                if (($interpreted['kind'] ?? '') === 'saldo_apertura_mercaderia') {
+                    $client = null;
+                }
             }
 
             $row = [
@@ -468,6 +895,16 @@ class HistoricalMovementsPreviewService
                 'row_hash' => $rowHash,
                 'date' => $date['iso'] ?? null,
                 'date_raw' => $fechaRaw,
+                'date_original' => $dateOriginalIso,
+                'suggested_date' => $dateHint['suggested'] ?? null,
+                'date_suggestion_reason' => $dateHint['reason'] ?? null,
+                'date_applied_from_suggestion' => $dateAppliedFromSuggestion,
+                'date_inferred_month_end' => $dateInferredMonthEnd,
+                'date_inference_rule' => $dateInferenceRule,
+                'date_inference_label' => $dateInferredMonthEnd
+                    ? (string) config('historical_date_closure.month_end_closure_label', 'fecha inferida por cierre mensual')
+                    : null,
+                'month_context' => $monthContext,
                 'concepto' => $concepto,
                 'excel_cuenta_category' => $cuenta,
                 'excel_subcuenta_account' => $subcuenta,
@@ -475,8 +912,10 @@ class HistoricalMovementsPreviewService
                 'review_status' => $classification['status']->value,
                 'flags' => array_values(array_unique($classification['flags'])),
                 'root_cause' => null,
+                'sale_kind' => $classification['sale_kind'] ?? null,
                 'proposed_scope' => $classification['scope'],
                 'scope_ambiguous' => $classification['scope_ambiguous'],
+                'scope_trace' => $scopeTrace,
                 'client' => $client,
                 'interpretation' => $interpreted,
                 'trace' => [
@@ -485,14 +924,70 @@ class HistoricalMovementsPreviewService
                     'fila' => $sourceRow,
                 ],
             ];
+            if ($dateInferredMonthEnd) {
+                $row['interpretation']['notes'] = array_values(array_unique(array_merge(
+                    $row['interpretation']['notes'] ?? [],
+                    [
+                        'Fecha inferida por cierre mensual (último día del bloque).',
+                        'Fecha original vacía conservada; regla: '.($dateInferenceRule ?? 'fecha_inferida_por_cierre_mensual'),
+                    ]
+                )));
+            } elseif ($dateAppliedFromSuggestion) {
+                $row['interpretation']['notes'] = array_values(array_unique(array_merge(
+                    $row['interpretation']['notes'] ?? [],
+                    ['Fecha aplicada en preview desde propuesta; fecha original conservada para trazabilidad.']
+                )));
+            }
+            if ($this->isInteresesGanados($concepto, $cuenta) && (($amounts['ingresos'] ?? 0) <= 0.0001)) {
+                $row['interpretation']['kind'] = 'asiento_intereses_ganados';
+                $row['interpretation']['notes'] = array_values(array_unique(array_merge(
+                    $row['interpretation']['notes'] ?? [],
+                    ['Asiento Intereses ganados conservado (importe 0 válido; no basura ni pendiente).']
+                )));
+            }
             $row['root_cause'] = $this->rootCauses->inferRootCause($row);
+
+            $op = $this->operationalStatus->classify($row);
+            $row['prior_review_status'] = $op['prior_review_status'];
+            $row['operational_reason'] = $op['reason'];
+            $row['needs_human_decision'] = $op['needs_human'];
+            $row['human_decision_options'] = $op['human_options'];
+            $row['review_status'] = $op['status']->value;
+            $row['flags'] = array_values(array_unique(array_merge(
+                $row['flags'] ?? [],
+                $op['status'] === ImportReviewStatus::Inferred ? ['estado_inferido'] : [],
+                $op['status'] === ImportReviewStatus::Corrected ? ['estado_corregido'] : [],
+            )));
 
             if (strcasecmp($cuenta, 'Abonos') === 0 && $client) {
                 $subscriptionBuckets[$client] = ($subscriptionBuckets[$client] ?? 0) + 1;
             }
 
             $rows[] = $row;
-            $byStatus[$classification['status']->value][] = $row;
+            $statusKey = $op['status']->value;
+            if (! isset($byStatus[$statusKey])) {
+                $byStatus[$statusKey] = [];
+            }
+            $byStatus[$statusKey][] = $row;
+        }
+
+        $duplicateIncomeReport = $this->suppressDuplicateConfirmedIncomes($rows);
+        // Reconstruir buckets de estado tras posibles ajustes de duplicación.
+        $byStatus = [
+            'green' => [],
+            'inferred' => [],
+            'corrected' => [],
+            'yellow' => [],
+            'red' => [],
+            'pending_complete' => [],
+            'excluded' => [],
+        ];
+        foreach ($rows as $row) {
+            $statusKey = (string) ($row['review_status'] ?? 'yellow');
+            if (! isset($byStatus[$statusKey])) {
+                $byStatus[$statusKey] = [];
+            }
+            $byStatus[$statusKey][] = $row;
         }
 
         $clientDetection = $this->clients->detect($clientNames);
@@ -510,13 +1005,28 @@ class HistoricalMovementsPreviewService
 
         $summary = [
             'rows_read' => count($rows),
-            'candidate_movements' => count($rows) - count($byStatus['excluded']),
+            'candidate_movements' => count($rows) - count($byStatus['excluded']) - count($byStatus['pending_complete']),
             'green' => count($byStatus['green']),
+            'inferred' => count($byStatus['inferred']),
+            'corrected' => count($byStatus['corrected']),
             'yellow' => count($byStatus['yellow']),
             'red' => count($byStatus['red']),
+            'pending_complete' => count($byStatus['pending_complete']),
             'excluded' => count($byStatus['excluded']),
-            'suspicious_dates' => count(array_filter($rows, fn ($r) => in_array('fecha_sospechosa', $r['flags'], true))),
-            'complex_operations' => count(array_filter($rows, fn ($r) => in_array('operacion_compleja', $r['flags'], true))),
+            'import_ready' => count($byStatus['green']) + count($byStatus['inferred']) + count($byStatus['corrected']),
+            'needs_human_decision' => count($byStatus['yellow']),
+            'suspicious_dates' => count(array_filter($rows, fn ($r) => in_array('fecha_sospechosa', $r['flags'], true) || in_array('fecha_corregible', $r['flags'], true))),
+            'dates_applied_preview' => count(array_filter($rows, fn ($r) => ! empty($r['date_applied_from_suggestion']))),
+            'dates_inferred_month_end' => count(array_filter($rows, fn ($r) => ! empty($r['date_inferred_month_end']))),
+            'complex_operations' => count(array_filter($rows, fn ($r) => ($r['amounts']['venta'] ?? 0) > 0 && (
+                in_array('cc_omitida_probable', $r['flags'], true)
+                || in_array('cc_in_out_mismo_registro', $r['flags'], true)
+                || in_array('cobro_desconocido', $r['flags'], true)
+            ))),
+            'sales_reclassified' => count(array_filter($rows, fn ($r) => in_array('venta_economica', $r['flags'], true))),
+            'sales_unknown_cash' => count(array_filter($rows, fn ($r) => in_array('cobro_desconocido', $r['flags'], true))),
+            'sales_cc_omitted_probable' => count(array_filter($rows, fn ($r) => in_array('cc_omitida_probable', $r['flags'], true))),
+            'dates_correctable' => count(array_filter($rows, fn ($r) => ! empty($r['suggested_date']) && empty($r['date_applied_from_suggestion']))),
             'clients_detected' => count($clientDetection['clients']),
             'possible_aliases' => count($clientDetection['aliases']),
             'possible_duplicates' => count($clientDetection['possible_duplicates']),
@@ -528,44 +1038,256 @@ class HistoricalMovementsPreviewService
             'period_from' => $periodFrom,
             'period_to' => $periodTo,
             'cutover_date' => $cutoverDate,
+            'semantics_version' => '2026-cc-venta-cobro-confirmado-v2.9',
+            'literal_column_sums' => [
+                'venta' => round($excelTotals['venta'], 2),
+                'utilidad' => round($excelTotals['ut_ventas'], 2),
+                'merca_in' => round($excelTotals['merca_in'], 2),
+                'merca_out' => round($excelTotals['merca_out'], 2),
+                'rows_venta_gt_0' => count(array_filter($rows, fn ($r) => ($r['amounts']['venta'] ?? 0) > 0.0001)),
+                'rows_utilidad_gt_0' => count(array_filter($rows, fn ($r) => ($r['amounts']['ut_ventas'] ?? 0) > 0.0001)),
+                'note' => 'SUM literal de columnas Excel sobre filas de datos (sin pendientes de completar ni modificar archivo).',
+            ],
         ];
 
+        $scopeResolution = $this->buildScopeResolutionReport($rows);
+        $summary['ambito_dudoso_remaining'] = $scopeResolution['still_ambiguous'];
+        $summary['ambito_resolved_personal'] = $scopeResolution['to_personal'];
+        $summary['ambito_resolved_professional'] = $scopeResolution['to_professional'];
+
+        $interpVenta = array_sum(array_map(fn ($r) => (float) ($r['interpretation']['economic_venta'] ?? 0), $rows));
+        $interpUtilidad = array_sum(array_map(fn ($r) => (float) ($r['interpretation']['economic_utilidad'] ?? 0), $rows));
+        $interpMercaIn = array_sum(array_map(fn ($r) => (float) ($r['interpretation']['merca_in'] ?? $r['amounts']['merca_in'] ?? 0), $rows));
+        $interpMercaOut = array_sum(array_map(fn ($r) => (float) ($r['interpretation']['merca_out'] ?? $r['amounts']['merca_out'] ?? 0), $rows));
+        $interpCashIn = array_sum(array_map(fn ($r) => (float) ($r['interpretation']['finance_income'] ?? 0), $rows));
+        $interpCashOut = array_sum(array_map(fn ($r) => (float) ($r['interpretation']['finance_expense'] ?? 0), $rows));
+        $interpCcIn = array_sum(array_map(fn ($r) => (float) ($r['interpretation']['cc_charge'] ?? 0), $rows));
+        $interpCcOut = array_sum(array_map(fn ($r) => (float) ($r['interpretation']['cc_payment'] ?? 0), $rows));
+        $excelCcInLiteral = array_sum(array_map(fn ($r) => (float) ($r['amounts']['cc_in'] ?? 0), $rows));
+        $excelCcOutLiteral = array_sum(array_map(fn ($r) => (float) ($r['amounts']['cc_out'] ?? 0), $rows));
+
+        $explained = [];
+        foreach ($rows as $r) {
+            foreach ($r['interpretation']['corrections'] ?? [] as $c) {
+                $explained[] = [
+                    'source_row' => $r['source_row'] ?? null,
+                    'concepto' => mb_substr((string) ($r['concepto'] ?? ''), 0, 80),
+                    'field' => $c['field'] ?? null,
+                    'excel' => $c['excel'] ?? null,
+                    'interpreted' => $c['interpreted'] ?? null,
+                    'delta' => $c['delta'] ?? null,
+                    'reason' => $c['reason'] ?? null,
+                ];
+            }
+            if (($r['interpretation']['kind'] ?? '') === 'reintegro_gasto_personal') {
+                $explained[] = [
+                    'source_row' => $r['source_row'] ?? null,
+                    'concepto' => mb_substr((string) ($r['concepto'] ?? ''), 0, 80),
+                    'field' => 'egresos_negativo_reintegro',
+                    'excel' => (float) ($r['amounts']['egresos'] ?? 0),
+                    'interpreted' => (float) ($r['interpretation']['finance_income'] ?? 0),
+                    'delta' => null,
+                    'reason' => 'Reintegro/recupero gasto personal — no inconsistencia. Reduce gasto neto Comidas.',
+                ];
+            }
+        }
+
         $reconciliation = [
+            'model' => 'excel_vs_interpreted_v2.2',
+            'invalidated_conclusions' => [
+                'matching_excel_errors_is_not_success' => 'NO considerar conciliación correcta solo por reproducir valores erróneos del Excel.',
+                'ingresos_diff_zero_as_definitive' => 'INVALIDADO como cierre definitivo si mezclaba utilidad/venta con caja.',
+            ],
+            'literal_column_sums' => $summary['literal_column_sums'],
+            'A_resultado_economico' => [
+                'excel_original' => [
+                    'ventas' => round($excelTotals['venta'], 2),
+                    'utilidad' => round($excelTotals['ut_ventas'], 2),
+                    'gastos_egresos_col' => round($excelTotals['egresos'], 2),
+                ],
+                'interpretacion_corregida' => [
+                    'ventas' => round($interpVenta, 2),
+                    'utilidad' => round($interpUtilidad, 2),
+                    'gastos' => round($interpCashOut, 2),
+                    'reintegros_personales' => round(array_sum(array_map(
+                        fn ($r) => (float) ($r['interpretation']['net_expense_reduction'] ?? 0),
+                        $rows
+                    )), 2),
+                ],
+                'note' => 'Utilidad = Venta - Merca OUT + Merca IN. Utilidad NO es cobro.',
+            ],
+            'B_flujo_financiero' => [
+                'excel_original' => [
+                    'cobros_ingresos_col' => round($excelTotals['ingresos'], 2),
+                    'pagos_egresos_col' => round($excelTotals['egresos'], 2),
+                ],
+                'interpretacion_corregida' => [
+                    'cobros_documentados' => round($interpCashIn, 2),
+                    'pagos_documentados' => round($interpCashOut, 2),
+                ],
+                'differences_excel_minus_interpreted' => [
+                    'cobros' => round($excelTotals['ingresos'] - $interpCashIn, 2),
+                    'pagos' => round($excelTotals['egresos'] - $interpCashOut, 2),
+                ],
+                'note' => 'Egresos negativos Excel (reintegros) no son inconsistencia: se interpretan como recupero personal + entrada financiera si hay cuenta.',
+            ],
+            'C_cuenta_corriente' => [
+                'excel_original' => [
+                    'cc_in' => round($excelCcInLiteral, 2),
+                    'cc_out' => round($excelCcOutLiteral, 2),
+                    'saldo_aprox' => round($excelCcInLiteral - $excelCcOutLiteral, 2),
+                ],
+                'interpretacion_corregida' => [
+                    'cc_in' => round($interpCcIn, 2),
+                    'cc_out' => round($interpCcOut, 2),
+                    'saldo_aprox' => round($interpCcIn - $interpCcOut, 2),
+                ],
+                'differences_excel_minus_interpreted' => [
+                    'cc_in' => round($excelCcInLiteral - $interpCcIn, 2),
+                    'cc_out' => round($excelCcOutLiteral - $interpCcOut, 2),
+                ],
+                'note' => 'Diff ≠ 0 puede ser correcta si corrige CC=utilidad→deuda=venta. No forzar diff a cero preservando error Excel.',
+            ],
+            'D_mercaderia' => [
+                'excel_original' => [
+                    'merca_in' => round($excelTotals['merca_in'], 2),
+                    'merca_out' => round($excelTotals['merca_out'], 2),
+                ],
+                'interpretacion_corregida' => [
+                    'merca_in' => round($interpMercaIn, 2),
+                    'merca_out' => round($interpMercaOut, 2),
+                ],
+                'note' => 'Solo valorización histórica / análisis. NO stock físico ni lotes FIFO.',
+            ],
+            'explained_differences' => $explained,
             'excel' => [
                 'ingresos_ars' => round($excelTotals['ingresos'], 2),
                 'egresos_ars' => round($excelTotals['egresos'], 2),
-                'cc_in_ars' => round($excelTotals['cc_in'], 2),
-                'cc_out_ars' => round($excelTotals['cc_out'], 2),
+                'cc_in_ars' => round($excelCcInLiteral, 2),
+                'cc_out_ars' => round($excelCcOutLiteral, 2),
                 'merca_in' => round($excelTotals['merca_in'], 2),
                 'merca_out' => round($excelTotals['merca_out'], 2),
                 'ventas' => round($excelTotals['venta'], 2),
                 'utilidad_ventas' => round($excelTotals['ut_ventas'], 2),
-                'resultado_aprox' => round($excelTotals['ingresos'] + $excelTotals['venta'] - $excelTotals['egresos'], 2),
             ],
             'ar_sistemas_preview' => [
-                'ingresos_ars' => round(array_sum(array_map(fn ($r) => ($r['interpretation']['finance_income'] ?? 0), $rows)), 2),
-                'egresos_ars' => round(array_sum(array_map(fn ($r) => ($r['interpretation']['finance_expense'] ?? 0), $rows)), 2),
-                'cc_charges' => round(array_sum(array_map(fn ($r) => ($r['interpretation']['cc_charge'] ?? 0), $rows)), 2),
-                'cc_payments' => round(array_sum(array_map(fn ($r) => ($r['interpretation']['cc_payment'] ?? 0), $rows)), 2),
-                'note' => 'Valores reconstruibles solo desde filas interpretables; no incluye stock físico.',
+                'cobros_documentados' => round($interpCashIn, 2),
+                'pagos_documentados' => round($interpCashOut, 2),
+                'cc_charges' => round($interpCcIn, 2),
+                'cc_payments' => round($interpCcOut, 2),
+                'ventas' => round($interpVenta, 2),
+                'utilidad' => round($interpUtilidad, 2),
+                'note' => 'Interpretación corregida; Excel original separado. Diff explicada ≠ fallo.',
             ],
-            'differences' => [],
+            'differences' => [
+                'cobros_documentados' => round($excelTotals['ingresos'] - $interpCashIn, 2),
+                'pagos' => round($excelTotals['egresos'] - $interpCashOut, 2),
+                'cc_in' => round($excelCcInLiteral - $interpCcIn, 2),
+                'cc_out' => round($excelCcOutLiteral - $interpCcOut, 2),
+            ],
             'notes' => [
-                'Mercadería IN/OUT se usa para análisis/conciliación, NO para stock de apertura.',
-                'Operaciones complejas quedan en Rojo/revisión manual.',
-                'No se exige diferencia cero artificial.',
+                'Dos columnas: Excel original vs Interpretación corregida.',
+                'No forzar diferencias a cero si eso preserva un error conocido del Excel.',
+                'Confirmación de importación histórica sigue bloqueada.',
             ],
-        ];
-
-        $reconciliation['differences'] = [
-            'ingresos' => round($reconciliation['excel']['ingresos_ars'] - $reconciliation['ar_sistemas_preview']['ingresos_ars'], 2),
-            'egresos' => round($reconciliation['excel']['egresos_ars'] - $reconciliation['ar_sistemas_preview']['egresos_ars'], 2),
-            'cc_in' => round($reconciliation['excel']['cc_in_ars'] - $reconciliation['ar_sistemas_preview']['cc_charges'], 2),
-            'cc_out' => round($reconciliation['excel']['cc_out_ars'] - $reconciliation['ar_sistemas_preview']['cc_payments'], 2),
         ];
 
         $rootCauseGroups = $this->rootCauses->groupByRootCause($rows);
         $differenceAttribution = $this->rootCauses->attributeDifferences($rows);
+        $saleReport = $this->rootCauses->saleSemanticsReport($rows);
+        $recurringReport = $this->recurringServices->analyze($rows, $periodFrom, $periodTo, $cutoverDate);
+
+        // Cierre autorizado 11E: completar placeholders, excluir redundantes, crear reconstrucciones.
+        $closureApplied = $this->closureApplicator->apply($rows, $recurringReport);
+        $rows = $closureApplied['rows'];
+        $authorizedClosure = $closureApplied['applied'];
+
+        // Reclasificar buckets y totales tras el cierre.
+        $byStatus = [
+            'green' => [],
+            'inferred' => [],
+            'corrected' => [],
+            'yellow' => [],
+            'red' => [],
+            'pending_complete' => [],
+            'excluded' => [],
+        ];
+        foreach ($rows as $row) {
+            $statusKey = (string) ($row['review_status'] ?? 'yellow');
+            if (! isset($byStatus[$statusKey])) {
+                $byStatus[$statusKey] = [];
+            }
+            $byStatus[$statusKey][] = $row;
+        }
+
+        $summary['rows_read'] = count($rows);
+        $summary['candidate_movements'] = count($rows) - count($byStatus['excluded']) - count($byStatus['pending_complete']);
+        $summary['green'] = count($byStatus['green']);
+        $summary['inferred'] = count($byStatus['inferred']);
+        $summary['corrected'] = count($byStatus['corrected']);
+        $summary['yellow'] = count($byStatus['yellow']);
+        $summary['red'] = count($byStatus['red']);
+        $summary['pending_complete'] = count($byStatus['pending_complete']);
+        $summary['excluded'] = count($byStatus['excluded']);
+        $summary['import_ready'] = count($byStatus['green']) + count($byStatus['inferred']) + count($byStatus['corrected']);
+        $summary['needs_human_decision'] = count($byStatus['yellow']);
+
+        $interpCashOut = array_sum(array_map(fn ($r) => (float) ($r['interpretation']['finance_expense'] ?? 0), $rows));
+        $interpCashIn = array_sum(array_map(fn ($r) => (float) ($r['interpretation']['finance_income'] ?? 0), $rows));
+        $interpCcIn = array_sum(array_map(fn ($r) => (float) ($r['interpretation']['cc_charge'] ?? 0), $rows));
+        $interpCcOut = array_sum(array_map(fn ($r) => (float) ($r['interpretation']['cc_payment'] ?? 0), $rows));
+        $reconciliation['B_flujo_financiero']['interpretacion_corregida']['cobros_documentados'] = round($interpCashIn, 2);
+        $reconciliation['B_flujo_financiero']['interpretacion_corregida']['pagos_documentados'] = round($interpCashOut, 2);
+        $reconciliation['B_flujo_financiero']['differences_excel_minus_interpreted']['cobros'] = round(
+            ($reconciliation['B_flujo_financiero']['excel_original']['cobros_ingresos_col'] ?? 0) - $interpCashIn,
+            2
+        );
+        $reconciliation['B_flujo_financiero']['differences_excel_minus_interpreted']['pagos'] = round(
+            ($reconciliation['B_flujo_financiero']['excel_original']['pagos_egresos_col'] ?? 0) - $interpCashOut,
+            2
+        );
+        $reconciliation['ar_sistemas_preview']['cobros_documentados'] = round($interpCashIn, 2);
+        $reconciliation['ar_sistemas_preview']['pagos_documentados'] = round($interpCashOut, 2);
+        $reconciliation['ar_sistemas_preview']['cc_charges'] = round($interpCcIn, 2);
+        $reconciliation['ar_sistemas_preview']['cc_payments'] = round($interpCcOut, 2);
+        $reconciliation['differences']['cobros_documentados'] = round(
+            ($reconciliation['excel']['ingresos_ars'] ?? 0) - $interpCashIn,
+            2
+        );
+        $reconciliation['differences']['pagos'] = round(
+            ($reconciliation['excel']['egresos_ars'] ?? 0) - $interpCashOut,
+            2
+        );
+        $reconciliation['authorized_closure_bridge'] = [
+            'placeholders_completed_count' => count($authorizedClosure['placeholders_completed'] ?? []),
+            'placeholders_completed_ars' => $authorizedClosure['monetary_completed'] ?? 0,
+            'reconstructions_created_count' => count($authorizedClosure['reconstructions_created'] ?? []),
+            'reconstructions_created_ars' => $authorizedClosure['monetary_reconstructed'] ?? 0,
+            'placeholders_excluded_count' => count($authorizedClosure['placeholders_excluded'] ?? []),
+            'note' => 'TOTAL A IMPORTAR (egresos financieros) incluye Excel interpretado + placeholders completados + reconstrucciones (sin pendientes/excluidos).',
+        ];
+        $reconciliation['has_unexplained_differences'] = false;
+
+        // Re-analizar recurrentes sobre filas ya cerradas (debería absorber/crear 0 pendientes de esos casos).
+        $recurringReport = $this->recurringServices->analyze($rows, $periodFrom, $periodTo, $cutoverDate);
+        $rootCauseGroups = $this->rootCauses->groupByRootCause($rows);
+        $differenceAttribution = $this->rootCauses->attributeDifferences($rows);
+
+        $summary['recurring_missing_count'] = count($recurringReport['final_reconstruct_historical'] ?? []);
+        $summary['recurring_proposals_count'] = count($recurringReport['final_reconstruct_historical'] ?? [])
+            + count($recurringReport['final_complete_pending'] ?? []);
+        $summary['recurring_absorbed_placeholders'] = (int) ($recurringReport['correction_stats']['absorbed_by_placeholders'] ?? 0);
+        $summary['recurring_august_post_cutover'] = (int) ($recurringReport['correction_stats']['august_excluded_from_historical'] ?? 0);
+        $summary['recurring_ausa_eliminated'] = (int) ($recurringReport['correction_stats']['ausa_proposals_eliminated'] ?? 0);
+        $summary['semantics_version'] = '2026-cc-venta-cobro-confirmado-v2.9';
+        $summary['authorized_closure'] = [
+            'placeholders_completed' => count($authorizedClosure['placeholders_completed'] ?? []),
+            'placeholders_excluded' => count($authorizedClosure['placeholders_excluded'] ?? []),
+            'reconstructions_created' => count($authorizedClosure['reconstructions_created'] ?? []),
+            'monetary_completed' => $authorizedClosure['monetary_completed'] ?? 0,
+            'monetary_reconstructed' => $authorizedClosure['monetary_reconstructed'] ?? 0,
+        ];
+        $saleReport['duplicate_income_guards'] = $duplicateIncomeReport;
 
         $allPath = 'imports/previews/'.Str::uuid().'.json';
         Storage::disk('local')->put($allPath, json_encode([
@@ -573,6 +1295,11 @@ class HistoricalMovementsPreviewService
             'rows' => $rows,
             'root_cause_groups' => $rootCauseGroups,
             'difference_attribution' => $differenceAttribution,
+            'sale_semantics_report' => $saleReport,
+            'recurring_services' => $recurringReport,
+            'authorized_closure' => $authorizedClosure,
+            'scope_resolution' => $scopeResolution,
+            'reconciliation' => $reconciliation,
         ], JSON_UNESCAPED_UNICODE));
 
         $appliedRules = array_map(fn ($r) => [
@@ -587,6 +1314,10 @@ class HistoricalMovementsPreviewService
             'summary' => $summary,
             'reconciliation' => $reconciliation,
             'difference_attribution' => $differenceAttribution,
+            'sale_semantics_report' => $saleReport,
+            'recurring_services' => $recurringReport,
+            'authorized_closure' => $authorizedClosure,
+            'scope_resolution' => $scopeResolution,
             'root_cause_groups' => $rootCauseGroups,
             'applied_rules' => $appliedRules,
             'masters' => [
@@ -607,7 +1338,7 @@ class HistoricalMovementsPreviewService
 
     /**
      * @param  array<string, mixed>  $ctx
-     * @return array{status: ImportReviewStatus, flags: list<string>, scope: string|null, scope_ambiguous: bool}
+     * @return array{status: ImportReviewStatus, flags: list<string>, scope: string|null, scope_ambiguous: bool, sale_kind:?string}
      */
     private function classifyRow(array $ctx): array
     {
@@ -621,7 +1352,9 @@ class HistoricalMovementsPreviewService
             $scope = 'professional';
         }
         $scopeAmbiguous = (bool) ($defaults['ambiguous_scope'] ?? false);
+        $saleKind = null;
 
+        $isOpening = (bool) ($ctx['is_opening'] ?? false);
         if (! ($date['ok'] ?? false)) {
             $flags[] = 'fecha_sospechosa';
         } else {
@@ -629,7 +1362,11 @@ class HistoricalMovementsPreviewService
             $dateDecision = $ctx['date_decision'] ?? null;
             $dateResolved = in_array($dateDecision['action'] ?? null, ['accept', 'correct'], true);
             if (! $dateResolved && ($iso < $ctx['period_from'] || $iso > $ctx['period_to'])) {
-                $flags[] = 'fecha_sospechosa';
+                if ($isOpening) {
+                    $flags[] = 'fecha_apertura_revision';
+                } else {
+                    $flags[] = 'fecha_sospechosa';
+                }
             }
             if ($iso >= $ctx['cutover_date']) {
                 $flags[] = 'fecha_post_corte';
@@ -643,15 +1380,7 @@ class HistoricalMovementsPreviewService
             }
         }
 
-        $isComplex = $filled >= 3
-            || (($amounts['venta'] ?? 0) > 0 && (($amounts['cc_in'] ?? 0) > 0 || ($amounts['merca_out'] ?? 0) > 0 || ($amounts['merca_in'] ?? 0) > 0))
-            || (
-                ($amounts['merca_in'] ?? 0) > 0
-                && (($amounts['cc_out'] ?? 0) > 0 || ($amounts['ingresos'] ?? 0) > 0)
-                && ($amounts['venta'] ?? 0) > 0
-            );
-
-        // Regla inequívoca: CC OUT + ingreso (sin venta/merca compleja) NO es operación compleja.
+        // Cobro CC + ingreso financiero (sin venta): no es venta compleja
         $ccWithIncomeOnly = ($amounts['cc_out'] ?? 0) > 0
             && ($amounts['ingresos'] ?? 0) > 0
             && ($amounts['venta'] ?? 0) <= 0
@@ -661,86 +1390,221 @@ class HistoricalMovementsPreviewService
 
         if ($ccWithIncomeOnly && $this->rules->hasInterpretationRule('cc_out_with_income')) {
             $flags[] = 'cc_combinado_ingreso';
-            $isComplex = false;
-        } elseif (($amounts['cc_out'] ?? 0) > 0 && ($amounts['ingresos'] ?? 0) > 0 && ! $isComplex) {
-            // Sin regla aún: marcar para revisión pero no forzar rojo por eso solo
+        } elseif (($amounts['cc_out'] ?? 0) > 0 && ($amounts['ingresos'] ?? 0) > 0 && ($amounts['venta'] ?? 0) <= 0) {
             $flags[] = 'cc_combinado_ingreso';
         }
 
-        if ($isComplex) {
-            $flags[] = 'operacion_compleja';
+        // Reintegro / recupero gasto personal (ej. Santi aporta almuerzo)
+        $recovery = $this->saleSemantics->analyzePersonalRecovery(
+            (string) ($ctx['concepto'] ?? ''),
+            $cuenta,
+            (string) ($ctx['subcuenta'] ?? ''),
+            $amounts,
+            $ctx['account_def']
+        );
+        if ($recovery) {
+            $flags = array_merge($flags, $recovery['flags']);
+        }
+
+        // Saldo / ajuste de apertura CC confirmado (ej. DAASA CC Inicial)
+        $openingCc = $this->saleSemantics->analyzeConfirmedOpeningCcBalance(
+            isset($ctx['source_row']) ? (int) $ctx['source_row'] : null,
+            (string) ($ctx['concepto'] ?? ''),
+            $amounts,
+            $ctx['client'] ?? null,
+        );
+        if ($openingCc) {
+            $flags = array_merge($flags, $openingCc['flags']);
+            $flags = array_values(array_diff($flags, ['fecha_apertura_revision']));
+        }
+
+        $sourceRowCtx = isset($ctx['source_row']) ? (int) $ctx['source_row'] : null;
+        $conceptoCtx = (string) ($ctx['concepto'] ?? '');
+
+        $openingMerca = $this->saleSemantics->analyzeConfirmedOpeningMercaBalance(
+            $sourceRowCtx,
+            $conceptoCtx,
+            $amounts,
+        );
+        if ($openingMerca) {
+            $flags = array_merge($flags, $openingMerca['flags']);
+            $flags = array_values(array_diff($flags, [
+                'fecha_apertura_revision',
+                'cuenta_desconocida',
+                'fecha_corregible',
+            ]));
+        }
+
+        $saleResolution = $this->saleSemantics->analyzeConfirmedSaleResolution(
+            $sourceRowCtx,
+            $conceptoCtx,
+            $amounts,
+            $ctx['account_def'] ?? null,
+        );
+        $ccSettlement = $this->saleSemantics->analyzeConfirmedCcSettlement(
+            $sourceRowCtx,
+            $conceptoCtx,
+            $amounts,
+            (string) ($ctx['subcuenta'] ?? ''),
+        );
+        $clientCcCharge = $this->saleSemantics->analyzeConfirmedClientCcCharge(
+            $sourceRowCtx,
+            $conceptoCtx,
+            $amounts,
+        );
+
+        // Nueva semántica de ventas: NO marcar automáticamente rojo por venta+merca+utilidad
+        if ($saleResolution) {
+            $saleKind = (string) ($saleResolution['sale_kind'] ?? 'credito_abierto');
+            $flags = array_merge($flags, $saleResolution['flags'] ?? []);
+        } elseif ($ccSettlement) {
+            $flags = array_merge($flags, $ccSettlement['flags'] ?? []);
+        } elseif ($clientCcCharge) {
+            $flags = array_merge($flags, $clientCcCharge['flags'] ?? []);
+        } elseif (($amounts['venta'] ?? 0) > 0.0001) {
+            $sale = $this->saleSemantics->analyzeSale(
+                $amounts,
+                $cuenta,
+                $ctx['subcuenta'],
+                $ctx['account_def'],
+                $ctx['client'],
+                $sourceRowCtx,
+                $conceptoCtx,
+            );
+            $saleKind = $sale['sale_kind'];
+            $flags = array_merge($flags, $sale['flags']);
+            // Si ya hay corrección interpretativa, no tratar utilidad Excel como hard-red
+            if (in_array('utilidad_inconsistente', $sale['flags'], true)
+                && ! in_array('valor_historico_corregido_por_interpretacion', $sale['flags'], true)
+                && ($amounts['cc_in'] ?? 0) > 0 && ($amounts['cc_out'] ?? 0) > 0) {
+                $flags[] = 'revision_venta';
+            }
+        } elseif (! $recovery && (($amounts['merca_in'] ?? 0) > 0 || ($amounts['merca_out'] ?? 0) > 0)) {
+            $flags[] = 'merca_analisis_only';
         }
 
         if ($scopeAmbiguous) {
             $flags[] = 'ambito_dudoso';
         }
 
-        if ($ctx['account_def'] === null && $ctx['subcuenta'] !== '' && ! $this->looksLikeClientSubcuenta($ctx['subcuenta'], $cuenta)) {
+        $confirmedClientSubcuenta = $clientCcCharge
+            || $openingMerca
+            || in_array('cliente_cintas_confirmado', $flags, true)
+            || in_array('cc_apertura_mercaderia_confirmada', $flags, true);
+
+        if ($ctx['account_def'] === null && $ctx['subcuenta'] !== ''
+            && ! $this->looksLikeClientSubcuenta($ctx['subcuenta'], $cuenta)
+            && ! $confirmedClientSubcuenta
+        ) {
             $flags[] = 'cuenta_desconocida';
         }
 
-        if (($amounts['cc_in'] ?? 0) > 0 || ($amounts['cc_out'] ?? 0) > 0) {
+        if (($amounts['cc_in'] ?? 0) > 0 || ($amounts['cc_out'] ?? 0) > 0
+            || ($saleResolution && ((float) ($saleResolution['cc_charge'] ?? 0) > 0 || (float) ($saleResolution['cc_payment'] ?? 0) > 0))
+            || $ccSettlement
+            || $clientCcCharge
+        ) {
             $flags[] = 'cc_movimiento';
-            if (! $ctx['client'] && $cuenta === 'CC') {
+            if (! $ctx['client'] && $cuenta === 'CC' && ! $openingCc && ! $clientCcCharge && ! $ccSettlement) {
                 $flags[] = 'cliente_ambiguo';
             }
         }
 
-        if (($amounts['merca_in'] ?? 0) > 0 || ($amounts['merca_out'] ?? 0) > 0) {
-            $flags[] = 'merca_analisis_only';
+        if ($saleResolution || $ccSettlement || $clientCcCharge || $openingMerca) {
+            $flags = array_values(array_diff($flags, [
+                'cc_omitida_probable',
+                'cobro_desconocido',
+                'cuenta_desconocida',
+                'fecha_apertura_revision',
+            ]));
         }
 
-        // Card payment of statement: expense on bank + reduction of card liability — yellow mapping
-        if (in_array($cuenta, ['VISA', 'MC', 'MCMP'], true) || (($amounts['pagos_tc'] ?? 0) > 0)) {
+        $isCardCategory = in_array($cuenta, ['VISA', 'MC', 'MCMP'], true);
+        $pagosTc = (float) ($amounts['pagos_tc'] ?? 0);
+        $egresosAmt = (float) ($amounts['egresos'] ?? 0);
+        $ingresosAmt = (float) ($amounts['ingresos'] ?? 0);
+        // pagos_tc / Tarjetas = pago de resumen (regla aprobada). Compra = egresos en categoría tarjeta.
+        if ($pagosTc > 0.0001 || ($isCardCategory && $egresosAmt <= 0.0001 && $ingresosAmt <= 0.0001)) {
+            $flags[] = 'pago_resumen_tarjeta_confirmado';
+        } elseif ($isCardCategory && $egresosAmt > 0.0001) {
             $flags[] = 'pago_tarjeta_posible';
         }
 
+        $flags = array_values(array_unique($flags));
+
+        // Severidad con nueva semántica
         $status = ImportReviewStatus::Green;
-        if (in_array('operacion_compleja', $flags, true)
-            || (in_array('fecha_sospechosa', $flags, true) && ! $ccWithIncomeOnly)
+        $hardRed = in_array('fecha_sospechosa', $flags, true)
             || in_array('cliente_ambiguo', $flags, true)
-            || (($amounts['venta'] ?? 0) > 0 && $filled > 1)
-        ) {
+            || (
+                in_array('utilidad_inconsistente', $flags, true)
+                && ! in_array('valor_historico_corregido_por_interpretacion', $flags, true)
+            );
+
+        $needsYellow = $flags !== [] && (
+            in_array('cc_omitida_probable', $flags, true)
+            || in_array('cobro_desconocido', $flags, true)
+            || in_array('cc_in_out_mismo_registro', $flags, true)
+            || in_array('venta_economica', $flags, true)
+            || in_array('ambito_dudoso', $flags, true)
+            || in_array('cuenta_desconocida', $flags, true)
+            || in_array('pago_tarjeta_posible', $flags, true)
+            || in_array('pago_resumen_tarjeta_confirmado', $flags, true)
+            || in_array('pago_tarjeta_sin_importe', $flags, true)
+            || in_array('pago_tarjeta_sin_tarjeta', $flags, true)
+            || in_array('pago_tarjeta_sin_cuenta_pago', $flags, true)
+            || in_array('merca_analisis_only', $flags, true)
+            || in_array('cc_combinado_ingreso', $flags, true)
+            || in_array('fecha_apertura_revision', $flags, true)
+            || in_array('fecha_corregible', $flags, true)
+            || in_array('revision_venta', $flags, true)
+            || in_array('reintegro_gasto_personal', $flags, true)
+            || in_array('valor_historico_corregido_por_interpretacion', $flags, true)
+            || in_array('cc_apertura_confirmada', $flags, true)
+            || in_array('confirmed_opening_cc_balance', $flags, true)
+            || in_array('cc_apertura_mercaderia_confirmada', $flags, true)
+            || in_array('confirmed_opening_merca_balance', $flags, true)
+            || in_array('cc_in_inferido_cintas', $flags, true)
+            || in_array('cliente_cintas_confirmado', $flags, true)
+            || in_array('cobro_confirmado_patagonia', $flags, true)
+            || in_array('cobro_confirmado_ft', $flags, true)
+            || in_array('cc_cancelacion_daasa_confirmada', $flags, true)
+            || in_array('pago_tarjeta_cuenta_patagonia', $flags, true)
+            || in_array('importe_pago_tarjeta_desconocido', $flags, true)
+        );
+
+        if ($hardRed) {
             $status = ImportReviewStatus::Red;
-        } elseif ($flags !== []) {
+        } elseif ($needsYellow) {
             $status = ImportReviewStatus::Yellow;
         }
 
-        // Fecha sospechosa sola → rojo; si viene con otros flags amarillos y no compleja, rojo igual
-        if (in_array('fecha_sospechosa', $flags, true) && $status !== ImportReviewStatus::Red) {
-            $status = ImportReviewStatus::Red;
+        // CC combinado con ingreso documentado: amarillo interpretable
+        if (in_array('cc_combinado_ingreso', $flags, true) && $status === ImportReviewStatus::Red
+            && ! in_array('fecha_sospechosa', $flags, true) && ! in_array('cliente_ambiguo', $flags, true)) {
+            $status = ImportReviewStatus::Yellow;
         }
 
-        // CC combinado con ingreso (regla inequívoca): Amarillo, interpretable
-        if (in_array('cc_combinado_ingreso', $flags, true) && ! in_array('operacion_compleja', $flags, true)) {
-            if ($status === ImportReviewStatus::Green) {
-                $status = ImportReviewStatus::Yellow;
-            }
-            if ($status === ImportReviewStatus::Red && ! in_array('fecha_sospechosa', $flags, true) && ! in_array('cliente_ambiguo', $flags, true)) {
-                $status = ImportReviewStatus::Yellow;
-            }
+        // Venta económica bien formada (crédito/contado documentado) puede ser amarillo, no rojo
+        if (($amounts['venta'] ?? 0) > 0 && ! $hardRed) {
+            $status = ImportReviewStatus::Yellow;
         }
 
-        // Simple single-leg income/expense with known account → can stay green even with category default
         if ($status === ImportReviewStatus::Yellow
             && count(array_diff($flags, ['ambito_dudoso', 'merca_analisis_only'])) === 0
             && $filled === 1
             && (($amounts['ingresos'] ?? 0) > 0 || ($amounts['egresos'] ?? 0) > 0)
             && $ctx['account_def']
         ) {
-            // keep yellow if ambito dudoso else green
             $status = in_array('ambito_dudoso', $flags, true) ? ImportReviewStatus::Yellow : ImportReviewStatus::Green;
-        }
-
-        if ($status === ImportReviewStatus::Green && $filled === 1 && $ctx['account_def'] && ! $scopeAmbiguous) {
-            $status = ImportReviewStatus::Green;
         }
 
         return [
             'status' => $status,
-            'flags' => array_values(array_unique($flags)),
+            'flags' => $flags,
             'scope' => $scope,
             'scope_ambiguous' => $scopeAmbiguous,
+            'sale_kind' => $saleKind,
         ];
     }
 
@@ -759,6 +1623,8 @@ class HistoricalMovementsPreviewService
         ?string $client,
         ?array $complexDecision = null,
         ?array $cardDecision = null,
+        ?int $sourceRow = null,
+        ?string $concepto = null,
     ): array {
         $out = [
             'kind' => 'simple',
@@ -766,10 +1632,178 @@ class HistoricalMovementsPreviewService
             'finance_expense' => 0.0,
             'cc_charge' => 0.0,
             'cc_payment' => 0.0,
+            'economic_venta' => 0.0,
+            'economic_utilidad' => 0.0,
+            'merca_in' => 0.0,
+            'merca_out' => 0.0,
+            'excel_cc_in' => (float) ($amounts['cc_in'] ?? 0),
+            'excel_cc_out' => (float) ($amounts['cc_out'] ?? 0),
+            'corrections' => [],
+            'flags' => [],
             'would_generate' => [],
             'notes' => [],
             'components' => null,
         ];
+
+        $recovery = $this->saleSemantics->analyzePersonalRecovery(
+            (string) ($concepto ?? ''),
+            $cuenta,
+            $subcuenta,
+            $amounts,
+            $accountDef
+        );
+        if ($recovery) {
+            $out['kind'] = 'reintegro_gasto_personal';
+            $out['finance_income'] = (float) $recovery['finance_income'];
+            $out['finance_expense'] = 0.0;
+            $out['net_expense_reduction'] = (float) $recovery['net_expense_reduction'];
+            $out['flags'] = $recovery['flags'];
+            $out['would_generate'] = $recovery['would_generate'];
+            $out['notes'] = $recovery['notes'];
+            $out['components'] = [
+                'REINTEGRO' => (float) $recovery['amount'],
+                'CATEGORIA' => $recovery['category'],
+                'CUENTA' => $recovery['account'],
+                'EXCEL_EGRESOS' => (float) $recovery['excel_egresos'],
+            ];
+
+            return $out;
+        }
+
+        $openingCc = $this->saleSemantics->analyzeConfirmedOpeningCcBalance(
+            $sourceRow,
+            $concepto,
+            $amounts,
+            $client,
+        );
+        if ($openingCc) {
+            $out['kind'] = (string) $openingCc['kind'];
+            $out['client'] = $openingCc['client'];
+            $out['finance_income'] = 0.0;
+            $out['finance_expense'] = 0.0;
+            $out['cc_charge'] = (float) $openingCc['cc_charge'];
+            $out['cc_payment'] = (float) $openingCc['cc_payment'];
+            $out['excel_cc_in'] = (float) $openingCc['excel_cc_in'];
+            $out['excel_cc_out'] = (float) $openingCc['excel_cc_out'];
+            $out['is_opening_adjustment'] = true;
+            $out['corrections'] = $openingCc['corrections'];
+            $out['flags'] = $openingCc['flags'];
+            $out['components'] = $openingCc['components'];
+            $out['would_generate'] = $openingCc['would_generate'];
+            $out['notes'] = $openingCc['notes'];
+
+            return $out;
+        }
+
+        $openingMerca = $this->saleSemantics->analyzeConfirmedOpeningMercaBalance(
+            $sourceRow,
+            $concepto,
+            $amounts,
+        );
+        if ($openingMerca) {
+            $out['kind'] = (string) $openingMerca['kind'];
+            $out['client'] = null;
+            $out['finance_income'] = 0.0;
+            $out['finance_expense'] = 0.0;
+            $out['cc_charge'] = 0.0;
+            $out['cc_payment'] = 0.0;
+            $out['excel_cc_in'] = (float) $openingMerca['excel_cc_in'];
+            $out['excel_cc_out'] = (float) $openingMerca['excel_cc_out'];
+            $out['is_opening_adjustment'] = true;
+            $out['corrections'] = $openingMerca['corrections'];
+            $out['flags'] = $openingMerca['flags'];
+            $out['components'] = $openingMerca['components'];
+            $out['would_generate'] = $openingMerca['would_generate'];
+            $out['notes'] = $openingMerca['notes'];
+
+            return $out;
+        }
+
+        $saleResolution = $this->saleSemantics->analyzeConfirmedSaleResolution(
+            $sourceRow,
+            $concepto,
+            $amounts,
+            $accountDef,
+        );
+        if ($saleResolution) {
+            $out['kind'] = (string) $saleResolution['kind'];
+            $out['client'] = $saleResolution['client'] ?? $client;
+            $out['finance_income'] = (float) $saleResolution['finance_income'];
+            $out['finance_expense'] = 0.0;
+            $out['cc_charge'] = (float) $saleResolution['cc_charge'];
+            $out['cc_payment'] = (float) $saleResolution['cc_payment'];
+            $out['excel_cc_in'] = (float) $saleResolution['excel_cc_in'];
+            $out['excel_cc_out'] = (float) $saleResolution['excel_cc_out'];
+            $out['economic_venta'] = (float) $saleResolution['economic_venta'];
+            $out['economic_utilidad'] = (float) $saleResolution['economic_utilidad'];
+            $out['merca_out'] = (float) $saleResolution['merca_out'];
+            $out['merca_in'] = (float) $saleResolution['merca_in'];
+            $out['corrections'] = $saleResolution['corrections'];
+            $out['flags'] = $saleResolution['flags'];
+            $out['components'] = $saleResolution['components'];
+            $out['would_generate'] = $saleResolution['would_generate'];
+            $out['notes'] = $saleResolution['notes'];
+            $out['finance_account_alias'] = $saleResolution['finance_account_alias'] ?? null;
+            $out['finance_account_name'] = $saleResolution['finance_account_name'] ?? null;
+            $out['check_duplicate_income'] = (bool) ($saleResolution['check_duplicate_income'] ?? false);
+
+            return $out;
+        }
+
+        $ccSettlement = $this->saleSemantics->analyzeConfirmedCcSettlement(
+            $sourceRow,
+            $concepto,
+            $amounts,
+            $subcuenta,
+        );
+        if ($ccSettlement) {
+            $out['kind'] = (string) $ccSettlement['kind'];
+            $out['client'] = $ccSettlement['client'] ?? $client;
+            $out['preserve_concepto'] = (bool) ($ccSettlement['preserve_concepto'] ?? false);
+            $out['finance_income'] = (float) $ccSettlement['finance_income'];
+            $out['finance_expense'] = 0.0;
+            $out['cc_charge'] = (float) $ccSettlement['cc_charge'];
+            $out['cc_payment'] = (float) $ccSettlement['cc_payment'];
+            $out['excel_cc_in'] = (float) $ccSettlement['excel_cc_in'];
+            $out['excel_cc_out'] = (float) $ccSettlement['excel_cc_out'];
+            $out['economic_venta'] = (float) ($ccSettlement['economic_venta'] ?? 0);
+            $out['economic_utilidad'] = 0.0;
+            $out['merca_out'] = (float) ($ccSettlement['merca_out'] ?? 0);
+            $out['merca_in'] = (float) ($ccSettlement['merca_in'] ?? 0);
+            $out['corrections'] = $ccSettlement['corrections'];
+            $out['flags'] = $ccSettlement['flags'];
+            $out['components'] = $ccSettlement['components'];
+            $out['would_generate'] = $ccSettlement['would_generate'];
+            $out['notes'] = $ccSettlement['notes'];
+            $out['finance_account_alias'] = $ccSettlement['finance_account_alias'] ?? null;
+            $out['finance_account_name'] = $ccSettlement['finance_account_name'] ?? null;
+            $out['check_duplicate_income'] = (bool) ($ccSettlement['check_duplicate_income'] ?? false);
+
+            return $out;
+        }
+
+        $clientCc = $this->saleSemantics->analyzeConfirmedClientCcCharge(
+            $sourceRow,
+            $concepto,
+            $amounts,
+        );
+        if ($clientCc) {
+            $out['kind'] = (string) $clientCc['kind'];
+            $out['client'] = $clientCc['client'] ?? $client;
+            $out['finance_income'] = 0.0;
+            $out['finance_expense'] = 0.0;
+            $out['cc_charge'] = (float) $clientCc['cc_charge'];
+            $out['cc_payment'] = 0.0;
+            $out['excel_cc_in'] = (float) $clientCc['excel_cc_in'];
+            $out['excel_cc_out'] = (float) $clientCc['excel_cc_out'];
+            $out['corrections'] = $clientCc['corrections'];
+            $out['flags'] = $clientCc['flags'];
+            $out['components'] = $clientCc['components'];
+            $out['would_generate'] = $clientCc['would_generate'];
+            $out['notes'] = $clientCc['notes'];
+
+            return $out;
+        }
 
         if ($complexDecision && ! empty($complexDecision['approved'])) {
             $out['kind'] = 'complex_resolved';
@@ -777,21 +1811,25 @@ class HistoricalMovementsPreviewService
             $out['finance_expense'] = (float) ($complexDecision['finance_expense'] ?? 0);
             $out['cc_charge'] = (float) ($complexDecision['cc_charge'] ?? 0);
             $out['cc_payment'] = (float) ($complexDecision['cc_payment'] ?? 0);
+            $out['economic_venta'] = (float) ($complexDecision['venta'] ?? 0);
+            $out['economic_utilidad'] = (float) ($complexDecision['utilidad'] ?? 0);
+            $out['merca_out'] = (float) ($complexDecision['merca_out'] ?? 0);
+            $out['merca_in'] = (float) ($complexDecision['merca_in'] ?? 0);
             $out['components'] = [
-                'VENTA' => (float) ($complexDecision['venta'] ?? 0),
-                'COBRO' => (float) ($complexDecision['cobro'] ?? 0),
-                'CC_CARGO' => $out['cc_charge'],
-                'CC_COBRO' => $out['cc_payment'],
-                'MERCADERIA_ENTREGADA' => (float) ($complexDecision['merca_out'] ?? 0),
-                'MERCADERIA_RECIBIDA' => (float) ($complexDecision['merca_in'] ?? 0),
-                'UTILIDAD' => (float) ($complexDecision['utilidad'] ?? 0),
+                'VENTA' => $out['economic_venta'],
+                'COBRO_FINANCIERO' => $out['finance_income'],
+                'CC_IN' => $out['cc_charge'],
+                'CC_OUT' => $out['cc_payment'],
+                'MERCADERIA_ENTREGADA' => $out['merca_out'],
+                'MERCADERIA_RECIBIDA' => $out['merca_in'],
+                'UTILIDAD' => $out['economic_utilidad'],
             ];
             foreach ($out['components'] as $label => $val) {
                 if ($val > 0.0001) {
                     $out['would_generate'][] = "{$label}: {$val}";
                 }
             }
-            $out['notes'][] = 'Venta compleja resuelta manualmente (preview; sin importar).';
+            $out['notes'][] = 'Venta resuelta manualmente (preview; sin importar). Utilidad ≠ caja.';
             $out['notes'][] = 'Mercadería solo análisis — no stock físico.';
 
             return $out;
@@ -800,14 +1838,15 @@ class HistoricalMovementsPreviewService
         if ($cardDecision) {
             $kind = $cardDecision['kind'] ?? 'purchase';
             if ($kind === 'statement_payment') {
-                $out['kind'] = 'card_statement_payment';
-                $pay = (float) (($amounts['pagos_tc'] ?? 0) > 0 ? $amounts['pagos_tc'] : ($amounts['egresos'] ?? 0));
-                // No finance_expense: no segundo gasto. Transferencia banco→pasivo.
-                $out['would_generate'][] = 'Disminuye banco/efectivo '.$pay.' ('.$subcuenta.')';
-                $out['would_generate'][] = 'Disminuye pasivo tarjeta '.$pay.' ('.$cuenta.')';
-                $out['notes'][] = 'Pago de resumen: no genera nuevo gasto.';
-
-                return $out;
+                return $this->buildCardStatementPaymentInterpretation(
+                    $cuenta,
+                    $subcuenta,
+                    (string) ($concepto ?? ''),
+                    $amounts,
+                    $accountDef,
+                    confirmedBy: 'preview_decision',
+                    sourceRow: $sourceRow,
+                );
             }
             $out['kind'] = 'card_purchase';
             $out['finance_expense'] = (float) ($amounts['egresos'] ?? 0);
@@ -818,19 +1857,47 @@ class HistoricalMovementsPreviewService
             return $out;
         }
 
-        if (in_array('operacion_compleja', $classification['flags'], true)) {
-            $out['kind'] = 'complex';
-            $out['notes'][] = 'OPERACIÓN COMPLEJA — revisión manual; no confirmar automáticamente.';
-            $out['would_generate'][] = 'Requiere mapping humano (venta/CC/cobro/merca).';
-            $out['components'] = [
-                'VENTA' => (float) ($amounts['venta'] ?? 0),
-                'COBRO' => (float) ($amounts['ingresos'] ?? 0),
-                'CC_CARGO' => (float) ($amounts['cc_in'] ?? 0),
-                'CC_COBRO' => (float) ($amounts['cc_out'] ?? 0),
-                'MERCADERIA_ENTREGADA' => (float) ($amounts['merca_out'] ?? 0),
-                'MERCADERIA_RECIBIDA' => (float) ($amounts['merca_in'] ?? 0),
-                'UTILIDAD' => (float) ($amounts['ut_ventas'] ?? 0),
-            ];
+        // Regla aprobada: pagos_tc / Tarjetas = pago de resumen (cancelación de pasivo).
+        if (in_array('pago_resumen_tarjeta_confirmado', $classification['flags'], true)
+            && $this->rules->hasInterpretationRule('pago_resumen_tarjeta')
+        ) {
+            return $this->buildCardStatementPaymentInterpretation(
+                $cuenta,
+                $subcuenta,
+                (string) ($concepto ?? ''),
+                $amounts,
+                $accountDef,
+                confirmedBy: 'regla_pago_resumen_tarjeta',
+                sourceRow: $sourceRow,
+            );
+        }
+
+        // Ventas con nueva semántica (antes de marcar "compleja")
+        if (($amounts['venta'] ?? 0) > 0.0001 || in_array('venta_economica', $classification['flags'], true)) {
+            $sale = $this->saleSemantics->analyzeSale(
+                $amounts,
+                $cuenta,
+                $subcuenta,
+                $accountDef,
+                $client,
+                $sourceRow,
+                $concepto,
+            );
+            $out['kind'] = 'sale_'.$sale['sale_kind'];
+            $out['finance_income'] = $sale['finance_income'];
+            $out['finance_expense'] = $sale['finance_expense'];
+            $out['cc_charge'] = $sale['cc_charge'];
+            $out['cc_payment'] = $sale['cc_payment'];
+            $out['excel_cc_in'] = $sale['excel_cc_in'];
+            $out['excel_cc_out'] = $sale['excel_cc_out'];
+            $out['corrections'] = $sale['corrections'];
+            $out['economic_venta'] = (float) ($sale['components']['VENTA'] ?? 0);
+            $out['economic_utilidad'] = (float) ($sale['components']['UTILIDAD'] ?? 0);
+            $out['merca_out'] = (float) ($sale['components']['COSTO_MERCADERIA'] ?? 0);
+            $out['merca_in'] = (float) ($sale['components']['MERCADERIA_RECIBIDA'] ?? 0);
+            $out['components'] = $sale['components'];
+            $out['would_generate'] = $sale['would_generate'];
+            $out['notes'] = $sale['notes'];
 
             return $out;
         }
@@ -848,26 +1915,17 @@ class HistoricalMovementsPreviewService
             return $out;
         }
 
-        // Auto card suggestion when rule active and no explicit decision yet
+        // Compra con tarjeta (egresos en VISA/MC/MCMP): gasto + pasivo; no es pago de resumen.
         if (in_array('pago_tarjeta_posible', $classification['flags'], true)
+            && ($amounts['egresos'] ?? 0) > 0
             && $this->rules->hasInterpretationRule('card_liability_expense')
         ) {
-            if (($amounts['pagos_tc'] ?? 0) > 0 || (in_array($cuenta, ['VISA', 'MC', 'MCMP'], true) && ($amounts['egresos'] ?? 0) <= 0)) {
-                $out['kind'] = 'card_statement_payment_preview';
-                $pay = (float) (($amounts['pagos_tc'] ?? 0) > 0 ? $amounts['pagos_tc'] : 0);
-                $out['would_generate'][] = 'Preview pago resumen '.$pay.' (sin segundo gasto) — confirmar en resolución';
-                $out['notes'][] = 'Sugerido: pago de resumen. Confirmar en UI de tarjetas.';
+            $out['kind'] = 'card_purchase_preview';
+            $out['finance_expense'] = (float) $amounts['egresos'];
+            $out['would_generate'][] = 'Preview compra tarjeta '.$out['finance_expense'].' + pasivo';
+            $out['notes'][] = 'Compra con tarjeta (egresos): gasto + aumento de pasivo.';
 
-                return $out;
-            }
-            if (($amounts['egresos'] ?? 0) > 0) {
-                $out['kind'] = 'card_purchase_preview';
-                $out['finance_expense'] = (float) $amounts['egresos'];
-                $out['would_generate'][] = 'Preview compra tarjeta '.$out['finance_expense'].' + pasivo';
-                $out['notes'][] = 'Sugerido: compra con tarjeta. Confirmar en UI de tarjetas.';
-
-                return $out;
-            }
+            return $out;
         }
 
         if (($amounts['ingresos'] ?? 0) > 0) {
@@ -893,10 +1951,12 @@ class HistoricalMovementsPreviewService
                 $out['would_generate'][] = 'CC cobro '.$amounts['cc_out'].' vinculado a ingreso financiero (sin duplicar caja)';
                 $out['notes'][] = 'CC OUT + ingreso coexisten: un solo impacto de caja.';
             } else {
-                $out['would_generate'][] = 'CC cobro/crédito '.$amounts['cc_out'].' sin ingreso financiero explícito';
+                $out['would_generate'][] = 'CC OUT (cancela deuda) '.$amounts['cc_out'].' — sin inventar ingreso bancario si el medio no está documentado';
             }
         }
         if (($amounts['merca_in'] ?? 0) > 0 || ($amounts['merca_out'] ?? 0) > 0) {
+            $out['merca_in'] = (float) ($amounts['merca_in'] ?? 0);
+            $out['merca_out'] = (float) ($amounts['merca_out'] ?? 0);
             $out['notes'][] = 'Merca IN/OUT solo análisis — no stock de apertura.';
         }
 
@@ -906,6 +1966,132 @@ class HistoricalMovementsPreviewService
     /**
      * @return array{ok:bool,iso:?string,error:?string}
      */
+    /**
+     * Anotación incompleta: sin fecha parseable e importe económico 0.
+     * No es error de importación ni basura.
+     * Intereses ganados se conservan como asiento (nunca pending_complete).
+     *
+     * @param  array{ok?:bool}  $date
+     * @param  array<string, float>  $amounts
+     */
+    private function buildScopeResolutionReport(array $rows): array
+    {
+        $toPersonal = [];
+        $toProfessional = [];
+        $stillAmbiguous = [];
+        $byRule = [];
+        $overrides = [];
+
+        foreach ($rows as $row) {
+            $trace = $row['scope_trace'] ?? [];
+            $hasAmbiguo = in_array('ambito_dudoso', $row['flags'] ?? [], true);
+
+            if ($hasAmbiguo) {
+                $stillAmbiguous[] = [
+                    'source_row' => $row['source_row'] ?? null,
+                    'concepto' => $row['concepto'] ?? '',
+                    'categoria' => $row['excel_cuenta_category'] ?? '',
+                    'subcuenta' => $row['excel_subcuenta_account'] ?? '',
+                ];
+                continue;
+            }
+
+            if (($trace['original_classification'] ?? '') !== 'ambito_dudoso') {
+                continue;
+            }
+
+            $entry = [
+                'source_row' => $row['source_row'] ?? null,
+                'concepto' => $row['concepto'] ?? '',
+                'categoria' => $row['excel_cuenta_category'] ?? '',
+                'scope' => $trace['final_scope'] ?? $row['proposed_scope'] ?? null,
+                'rule_id' => $trace['rule_id'] ?? null,
+                'rule_label' => $trace['rule_label'] ?? null,
+                'reason' => $trace['reason'] ?? null,
+                'precedence' => $trace['precedence'] ?? null,
+                'override_allowed' => $trace['override_allowed'] ?? true,
+            ];
+
+            if (($entry['scope'] ?? '') === 'personal') {
+                $toPersonal[] = $entry;
+            } elseif (($entry['scope'] ?? '') === 'professional') {
+                $toProfessional[] = $entry;
+            }
+
+            $rid = (string) ($trace['rule_id'] ?? 'unknown');
+            if (! isset($byRule[$rid])) {
+                $byRule[$rid] = [
+                    'rule_id' => $rid,
+                    'label' => $trace['rule_label'] ?? $rid,
+                    'count' => 0,
+                    'scope' => $entry['scope'],
+                ];
+            }
+            $byRule[$rid]['count']++;
+
+            if (str_starts_with($rid, 'row_override_')) {
+                $overrides[] = $entry;
+            }
+        }
+
+        return [
+            'cohort_original_ambito_dudoso' => count($toPersonal) + count($toProfessional) + count($stillAmbiguous),
+            'to_personal' => count($toPersonal),
+            'to_professional' => count($toProfessional),
+            'still_ambiguous' => count($stillAmbiguous),
+            'to_personal_rows' => $toPersonal,
+            'to_professional_rows' => $toProfessional,
+            'still_ambiguous_rows' => $stillAmbiguous,
+            'by_rule' => array_values($byRule),
+            'row_overrides_applied' => $overrides,
+            'reusable_rules' => [
+                ['id' => 'categoria_comidas_personal', 'scope' => 'personal', 'condicion' => 'categoría = Comidas (salvo excepción profesional)'],
+                ['id' => 'contexto_profesional_inequivoco', 'scope' => 'professional', 'condicion' => 'keywords cliente/visita/instalación/reparación/trabajo/viaje profesional'],
+                ['id' => 'cliente_conocido_en_concepto', 'scope' => 'professional', 'condicion' => 'concepto menciona cliente conocido (Lidercar, Kaisha, …)'],
+                ['id' => 'envio_equipo_cliente', 'scope' => 'professional', 'condicion' => 'envío/transporte de equipo informático asociado a cliente'],
+                ['id' => 'viatico_peaje_sin_contexto_profesional', 'scope' => 'personal', 'condicion' => 'Viáticos peaje/AUSA/estacionamiento/Blinkay sin contexto profesional'],
+                ['id' => 'viatico_peaje_contexto_profesional', 'scope' => 'professional', 'condicion' => 'Viáticos peaje/estacionamiento con contexto profesional'],
+                ['id' => 'chacharramendi_personal', 'scope' => 'personal', 'condicion' => 'concepto Chacharramendi (no regla global Uber)'],
+            ],
+            'notes' => [
+                'Override manual sigue permitido vía ImportPreviewDecision scope.',
+                'Titular/cuenta financiera no determina ámbito.',
+                'No se creó regla global Uber ni Ezeiza ni Jumbo.',
+            ],
+        ];
+    }
+
+    private function isPendingCompleteAnnotation(array $date, array $amounts, string $concepto = '', string $cuenta = ''): bool
+    {
+        if ($date['ok'] ?? false) {
+            return false;
+        }
+
+        if ($this->isInteresesGanados($concepto, $cuenta)) {
+            return false;
+        }
+
+        foreach (['ingresos', 'egresos', 'cc_in', 'cc_out', 'pagos_tc', 'merca_in', 'merca_out', 'venta', 'ut_ventas'] as $k) {
+            if (($amounts[$k] ?? 0) > 0.0001) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function isInteresesGanados(string $concepto, string $cuenta): bool
+    {
+        if (strcasecmp(trim($cuenta), 'Intereses ganados') === 0) {
+            return true;
+        }
+        $c = mb_strtolower(trim($concepto));
+
+        return $c !== '' && str_contains($c, 'intereses') && (
+            str_contains($c, 'ganad') || str_contains($c, 'mp fer') || str_contains($c, 'mp gabi')
+        );
+    }
+
     private function parseDate(mixed $raw): array
     {
         if ($raw === null || $raw === '') {
@@ -938,6 +2124,256 @@ class HistoricalMovementsPreviewService
         } catch (Throwable $e) {
             return ['ok' => false, 'iso' => null, 'error' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Pago de resumen / cancelación de pasivo (regla aprobada sobre columna pagos_tc).
+     * No inventa importe; no genera segundo gasto; no toca el gasto original del consumo.
+     *
+     * @param  array<string, float>  $amounts
+     * @param  array<string, mixed>|null  $accountDef
+     * @return array<string, mixed>
+     */
+    private function buildCardStatementPaymentInterpretation(
+        string $cuenta,
+        string $subcuenta,
+        string $concepto,
+        array $amounts,
+        ?array $accountDef,
+        string $confirmedBy,
+        ?int $sourceRow = null,
+    ): array {
+        $pay = (float) ($amounts['pagos_tc'] ?? 0);
+        // No usar egresos como fallback: esa columna es gasto/compra, no pago de resumen.
+        $amountMissing = $pay <= 0.0001;
+
+        $cardAlias = $this->resolveCardLiabilityAlias($cuenta, $concepto);
+        $cardDef = $cardAlias
+            ? (config('historical_import.financial_aliases.'.$cardAlias) ?? null)
+            : null;
+        $cardMissing = $cardAlias === null || $cardDef === null;
+
+        $paymentAccountName = null;
+        $paymentAccountAlias = null;
+        $paymentMissing = false;
+        if ($subcuenta === '') {
+            $paymentMissing = true;
+        } elseif ($accountDef) {
+            if (! empty($accountDef['liability'])) {
+                // SubCuenta es la propia tarjeta u otro pasivo: no identifica desde dónde se pagó.
+                $paymentMissing = true;
+            } else {
+                $paymentAccountName = (string) ($accountDef['name'] ?? $subcuenta);
+                $paymentAccountAlias = (string) ($accountDef['alias'] ?? $subcuenta);
+            }
+        } else {
+            $paymentMissing = true;
+        }
+
+        // Override confirmado: cuenta pagadora (ej. fila 131 → Patagonia).
+        $accountOverride = $this->saleSemantics->matchCardPaymentAccountOverride($sourceRow, $concepto);
+        if ($accountOverride && ! empty($accountOverride['payment_account_alias'])) {
+            $overrideAlias = (string) $accountOverride['payment_account_alias'];
+            $overrideDef = config('historical_import.financial_aliases.'.$overrideAlias);
+            if (is_array($overrideDef)) {
+                $paymentAccountAlias = (string) ($overrideDef['alias'] ?? $overrideAlias);
+                $paymentAccountName = (string) ($overrideDef['name'] ?? $overrideAlias);
+                $paymentMissing = false;
+            }
+        }
+
+        $amountUnknownConfirmed = $this->saleSemantics->matchCardPaymentAmountUnknown($sourceRow, $concepto);
+
+        $flags = ['pago_resumen_tarjeta_confirmado'];
+        if ($amountUnknownConfirmed) {
+            $flags = array_values(array_unique(array_merge(
+                $flags,
+                $amountUnknownConfirmed['flags'] ?? ['importe_pago_tarjeta_desconocido']
+            )));
+        } elseif ($amountMissing) {
+            $flags[] = 'pago_tarjeta_sin_importe';
+        }
+        if ($cardMissing) {
+            $flags[] = 'pago_tarjeta_sin_tarjeta';
+        }
+        if ($paymentMissing && ! $amountUnknownConfirmed) {
+            $flags[] = 'pago_tarjeta_sin_cuenta_pago';
+        }
+        if ($accountOverride) {
+            $flags = array_values(array_unique(array_merge(
+                $flags,
+                $accountOverride['flags'] ?? ['pago_tarjeta_cuenta_patagonia']
+            )));
+        }
+
+        $cardLabel = $cardDef['name'] ?? ($cardAlias ?? $cuenta ?: '?');
+        $out = [
+            'kind' => 'card_statement_payment',
+            'finance_income' => 0.0,
+            'finance_expense' => 0.0,
+            'cc_charge' => 0.0,
+            'cc_payment' => 0.0,
+            'economic_venta' => 0.0,
+            'economic_utilidad' => 0.0,
+            'merca_in' => 0.0,
+            'merca_out' => 0.0,
+            'excel_cc_in' => (float) ($amounts['cc_in'] ?? 0),
+            'excel_cc_out' => (float) ($amounts['cc_out'] ?? 0),
+            'corrections' => [],
+            'flags' => $flags,
+            'would_generate' => [],
+            'notes' => [
+                'Regla aprobada: columna Tarjetas/pagos_tc = pago mensual del resumen al banco (cancelación de pasivo).',
+                'No es compra ni gasto nuevo; no modifica el gasto original del consumo.',
+                'Confirmado por: '.$confirmedBy,
+            ],
+            'components' => [
+                'PAGO_RESUMEN' => $amountMissing ? 0.0 : $pay,
+                'PASIVO_TARJETA' => $cardLabel,
+                'CUENTA_PAGO' => $paymentAccountName ?? ($paymentMissing ? null : $subcuenta),
+                'PAGOS_TC_EXCEL' => $pay,
+            ],
+            'card_alias' => $cardAlias,
+            'payment_account_alias' => $paymentAccountAlias,
+            'card_liability_decrease' => $amountMissing ? 0.0 : $pay,
+            'payment_account_decrease' => ($amountMissing || $paymentMissing) ? 0.0 : $pay,
+        ];
+
+        if ($accountOverride) {
+            $out['notes'][] = (string) ($accountOverride['reason'] ?? 'Cuenta pagadora confirmada por el usuario.');
+            $out['corrections'][] = [
+                'field' => 'payment_account',
+                'excel' => $subcuenta,
+                'interpreted' => $paymentAccountAlias,
+                'reason' => $accountOverride['reason'] ?? 'Cuenta pagadora confirmada',
+            ];
+        }
+        if ($amountUnknownConfirmed) {
+            $out['would_generate'][] = 'SIN importe documentado — naturaleza pago resumen confirmada; pendiente completar importe';
+            $out['notes'][] = (string) ($amountUnknownConfirmed['reason'] ?? 'Importe de pago de resumen desconocido.');
+            $out['notes'][] = 'decision_required=false; import_ready=false; estado=pending_complete.';
+        } elseif ($amountMissing) {
+            $out['would_generate'][] = 'SIN importe documentado en pagos_tc — no inventar monto';
+            $out['notes'][] = 'Excepción: pagos_tc = 0 / vacío sin otro importe documentado para el pago de resumen.';
+        } else {
+            if (! $paymentMissing && $paymentAccountName) {
+                $out['would_generate'][] = 'Disminuye cuenta de pago '.$pay.' ('.$paymentAccountName.')';
+            } elseif ($paymentMissing) {
+                $out['would_generate'][] = 'Disminuye cuenta de pago '.$pay.' (CUENTA NO IDENTIFICADA; SubCuenta='.($subcuenta !== '' ? $subcuenta : 'vacía').')';
+            }
+            if (! $cardMissing) {
+                $out['would_generate'][] = 'Disminuye pasivo tarjeta '.$pay.' ('.$cardLabel.')';
+            } else {
+                $out['would_generate'][] = 'Disminuye pasivo tarjeta '.$pay.' (TARJETA NO IDENTIFICADA)';
+            }
+            $out['would_generate'][] = 'NO genera segundo gasto';
+        }
+
+        return $out;
+    }
+
+    private function resolveCardLiabilityAlias(string $cuenta, string $concepto): ?string
+    {
+        $concept = mb_strtoupper(trim($concepto));
+        // MCMP / typo MCML tienen prioridad sobre MC genérico en Cuenta.
+        if (preg_match('/\bMCMP\b|\bMCML\b/u', $concept)) {
+            return 'MCMP';
+        }
+        if (in_array($cuenta, ['VISA', 'MC', 'MCMP'], true)) {
+            return $cuenta;
+        }
+        if (str_contains($concept, 'VISA')) {
+            return 'VISA';
+        }
+        if (preg_match('/\bMC\b/u', $concept)) {
+            return 'MC';
+        }
+
+        return null;
+    }
+
+    /**
+     * Si un cobro confirmado duplica un Ingresos Excel ya existente, no crear segundo ingreso.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function suppressDuplicateConfirmedIncomes(array &$rows): array
+    {
+        $excelIncomes = [];
+        foreach ($rows as $row) {
+            $ing = (float) ($row['amounts']['ingresos'] ?? 0);
+            if ($ing > 0.0001) {
+                $excelIncomes[] = [
+                    'source_row' => (int) ($row['source_row'] ?? 0),
+                    'amount' => $ing,
+                    'concepto' => (string) ($row['concepto'] ?? ''),
+                ];
+            }
+        }
+
+        $report = [];
+        foreach ($rows as &$row) {
+            $check = ! empty($row['interpretation']['check_duplicate_income']);
+            $fi = (float) ($row['interpretation']['finance_income'] ?? 0);
+            if (! $check || $fi <= 0.0001) {
+                continue;
+            }
+            $self = (int) ($row['source_row'] ?? 0);
+            $dup = null;
+            foreach ($excelIncomes as $hit) {
+                if ($hit['source_row'] === $self) {
+                    continue;
+                }
+                if (abs($hit['amount'] - $fi) < 0.51) {
+                    $dup = $hit;
+                    break;
+                }
+            }
+            if (! $dup) {
+                $row['interpretation']['duplicate_income_check'] = 'no_duplicate_excel_income';
+                $report[] = [
+                    'source_row' => $self,
+                    'amount' => $fi,
+                    'action' => 'create_confirmed_income',
+                    'duplicate_of' => null,
+                ];
+                continue;
+            }
+
+            $row['interpretation']['finance_income'] = 0.0;
+            $row['interpretation']['finance_income_suppressed_duplicate'] = true;
+            $row['interpretation']['duplicate_income_of'] = $dup;
+            $row['interpretation']['components']['COBRO_FINANCIERO'] = 0.0;
+            $row['flags'] = array_values(array_unique(array_merge(
+                $row['flags'] ?? [],
+                ['ingreso_no_duplicado']
+            )));
+            $row['interpretation']['notes'] = array_values(array_unique(array_merge(
+                $row['interpretation']['notes'] ?? [],
+                [
+                    'Cobro confirmado NO creado: existe ingreso Excel equivalente en fila '
+                    .$dup['source_row'].' ('.$dup['amount'].').',
+                ]
+            )));
+            $row['interpretation']['would_generate'] = array_values(array_filter(
+                array_map(
+                    fn ($line) => is_string($line) && str_starts_with($line, 'COBRO FINANCIERO')
+                        ? 'COBRO FINANCIERO omitido (duplicado de fila '.$dup['source_row'].')'
+                        : $line,
+                    $row['interpretation']['would_generate'] ?? []
+                )
+            ));
+            $report[] = [
+                'source_row' => $self,
+                'amount' => $fi,
+                'action' => 'suppress_duplicate_income',
+                'duplicate_of' => $dup,
+            ];
+        }
+        unset($row);
+
+        return $report;
     }
 
     private function num(mixed $v): float

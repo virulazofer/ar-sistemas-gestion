@@ -63,7 +63,7 @@ class SubscriptionController extends Controller
 
     public function show(Subscription $subscription): View
     {
-        $subscription->load(['client', 'periods.ledgerEntry', 'documents']);
+        $subscription->load(['client', 'periods.ledgerEntry', 'periods.commercialCharge', 'documents']);
 
         return view('subscriptions.show', compact('subscription'));
     }

@@ -16,7 +16,7 @@
     </x-slot>
 
     <form method="GET" class="mb-4 flex gap-2">
-        <input type="search" name="q" value="{{ $q }}" class="ar-input" placeholder="Buscar nombre, CUIT, email…">
+        <input type="search" name="q" value="{{ $q }}" class="ar-input" placeholder="Código, nombre, CUIT, email…">
         <button class="ar-btn ar-btn-secondary">Buscar</button>
     </form>
 
@@ -24,6 +24,7 @@
         <table class="ar-table">
             <thead>
                 <tr>
+                    <th>Código</th>
                     <th>Nombre</th>
                     <th>CUIT / DNI</th>
                     <th>Email</th>
@@ -34,6 +35,7 @@
             <tbody>
                 @forelse ($clients as $client)
                     <tr>
+                        <td>{{ $client->codeFormatted() }}</td>
                         <td>{{ $client->name }}</td>
                         <td>{{ $client->cuit ?: $client->dni ?: '—' }}</td>
                         <td>{{ $client->email ?: '—' }}</td>
@@ -43,7 +45,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="5" class="ar-muted py-6 text-center">Sin clientes.</td></tr>
+                    <tr><td colspan="6" class="ar-muted py-6 text-center">Sin clientes.</td></tr>
                 @endforelse
             </tbody>
         </table>

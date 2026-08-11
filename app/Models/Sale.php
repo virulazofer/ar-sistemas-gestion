@@ -21,8 +21,10 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
     'exchange_rate_id',
     'exchange_rate_value',
     'payment_mode',
+    'amount_paid_on_confirm',
     'salesperson_id',
     'notes',
+    'documental_status',
     'subtotal',
     'discount_amount',
     'tax_amount',
@@ -34,6 +36,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
     'total_cost_usd',
     'gross_margin',
     'charge_ledger_entry_id',
+    'commercial_charge_id',
     'payment_ledger_entry_id',
     'financial_movement_id',
     'confirmed_at',
@@ -48,10 +51,13 @@ class Sale extends Model
 
     public const MODE_CREDIT = 'credit';
 
+    public const MODE_PARTIAL = 'partial';
+
     protected function casts(): array
     {
         return [
             'status' => SaleStatus::class,
+            'documental_status' => \App\Enums\DocumentalStatus::class,
             'sold_on' => 'date',
             'exchange_rate_value' => 'decimal:6',
             'subtotal' => 'decimal:2',
@@ -64,6 +70,7 @@ class Sale extends Model
             'total_cost_ars' => 'decimal:2',
             'total_cost_usd' => 'decimal:2',
             'gross_margin' => 'decimal:2',
+            'amount_paid_on_confirm' => 'decimal:2',
             'confirmed_at' => 'datetime',
             'voided_at' => 'datetime',
         ];
@@ -97,6 +104,11 @@ class Sale extends Model
     public function chargeEntry(): BelongsTo
     {
         return $this->belongsTo(ClientLedgerEntry::class, 'charge_ledger_entry_id');
+    }
+
+    public function commercialCharge(): BelongsTo
+    {
+        return $this->belongsTo(CommercialCharge::class);
     }
 
     public function paymentEntry(): BelongsTo

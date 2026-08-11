@@ -14,7 +14,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'amount',
     'currency_code',
     'client_ledger_entry_id',
+    'commercial_charge_id',
     'status',
+    'documental_status',
     'generated_at',
     'generated_by',
 ])]
@@ -26,6 +28,7 @@ class SubscriptionPeriod extends Model
             'period_start' => 'date',
             'period_end' => 'date',
             'amount' => 'decimal:2',
+            'documental_status' => \App\Enums\DocumentalStatus::class,
             'generated_at' => 'datetime',
         ];
     }
@@ -38,6 +41,11 @@ class SubscriptionPeriod extends Model
     public function ledgerEntry(): BelongsTo
     {
         return $this->belongsTo(ClientLedgerEntry::class, 'client_ledger_entry_id');
+    }
+
+    public function commercialCharge(): BelongsTo
+    {
+        return $this->belongsTo(CommercialCharge::class);
     }
 
     public function generator(): BelongsTo

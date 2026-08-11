@@ -2,18 +2,18 @@
     <x-slot name="header">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
-                <h1 class="text-xl font-semibold">{{ $client->name }}</h1>
-                <p class="ar-muted text-sm">{{ $client->business_name }} · {{ $client->tax_condition }}</p>
+                <h1 class="text-xl font-semibold">{{ $client->labelWithCode() }}</h1>
+                <p class="ar-muted text-sm">{{ $client->business_name }} · {{ $client->taxConditionLabel() }}</p>
             </div>
             <div class="flex flex-wrap gap-2">
                 @can('clients.edit')
                     <a href="{{ route('clients.edit', $client) }}" class="ar-btn ar-btn-secondary">Editar</a>
                 @endcan
-                @can('clients.create')
-                    <a href="{{ route('clients.ledger.charge.create', $client) }}" class="ar-btn ar-btn-secondary">Cargo</a>
-                    <a href="{{ route('clients.ledger.payment.create', $client) }}" class="ar-btn ar-btn-primary">Pago</a>
-                    <a href="{{ route('clients.ledger.credit.create', $client) }}" class="ar-btn ar-btn-secondary">Crédito</a>
-                    <a href="{{ route('clients.ledger.adjustment.create', $client) }}" class="ar-btn ar-btn-secondary">Ajuste</a>
+                @can('charges.create')
+                    <a href="{{ route('charges.create', ['client_id' => $client->id]) }}" class="ar-btn ar-btn-secondary">Nuevo cargo</a>
+                @endcan
+                @can('receipts.create')
+                    <a href="{{ route('receipts.create', ['client_id' => $client->id]) }}" class="ar-btn ar-btn-primary">Registrar cobro</a>
                 @endcan
             </div>
         </div>
@@ -31,18 +31,17 @@
         <div class="ar-card p-5">
             <h2 class="ar-muted text-sm">Saldo CC ARS (a cobrar)</h2>
             <p class="text-2xl font-bold {{ $ccClass((string) $balances['ARS']) }}">{{ \App\Support\Money::formatAr($displayArs, 'ARS') }}</p>
-            <p class="ar-muted mt-1 text-xs">Positivo = nos deben · Negativo = a favor · Ledger DB sin cambios</p>
+            <p class="ar-muted mt-1 text-xs">+ rojo = nos deben · − verde = a favor</p>
         </div>
         <div class="ar-card p-5">
             <h2 class="ar-muted text-sm">Saldo CC USD (a cobrar)</h2>
             <p class="text-2xl font-bold {{ $ccClass((string) $balances['USD']) }}">{{ \App\Support\Money::formatAr($displayUsd, 'USD') }}</p>
-            <p class="ar-muted mt-1 text-xs">Saldos independientes (sin conversión automática)</p>
         </div>
     </div>
 
     <div class="mb-4 grid gap-4 lg:grid-cols-3">
         <div class="ar-card space-y-1 p-4 text-sm lg:col-span-2">
-            <p><span class="ar-muted">CUIT:</span> {{ $client->cuit ?: '—' }} · <span class="ar-muted">DNI:</span> {{ $client->dni ?: '—' }}</p>
+            <p><span class="ar-muted">Código:</span> {{ $client->codeFormatted() }} · <span class="ar-muted">CUIT:</span> {{ $client->cuit ?: '—' }} · <span class="ar-muted">DNI:</span> {{ $client->dni ?: '—' }}</p>
             <p><span class="ar-muted">Tel:</span> {{ $client->phone ?: '—' }} · <span class="ar-muted">Email:</span> {{ $client->email ?: '—' }}</p>
             <p><span class="ar-muted">Dirección:</span> {{ $client->address ?: '—' }}</p>
             @if ($client->notes)
@@ -53,7 +52,7 @@
         @can('documents.create')
             <form method="POST" action="{{ route('clients.documents.store', $client) }}" enctype="multipart/form-data" class="ar-card space-y-2 p-4">
                 @csrf
-                <h2 class="font-semibold">Documento</h2>
+                <h2 class="font-semibold">Documento archivo</h2>
                 <input type="file" name="file" class="ar-input" required>
                 <input type="text" name="notes" class="ar-input" placeholder="Notas (opcional)">
                 <button class="ar-btn ar-btn-secondary w-full">Adjuntar</button>
@@ -61,77 +60,98 @@
         @endcan
     </div>
 
-    @if ($client->documents->isNotEmpty())
-        <div class="ar-card mb-4 p-4">
-            <h2 class="mb-2 font-semibold">Documentos</h2>
-            <ul class="list-disc ps-5 text-sm">
-                @foreach ($client->documents as $doc)
-                    <li>{{ $doc->original_name }} @if($doc->notes)— {{ $doc->notes }}@endif</li>
-                @endforeach
-            </ul>
+    @if ($openCharges->isNotEmpty())
+        <div class="ar-card mb-4 overflow-x-auto">
+            <h2 class="border-b px-4 py-3 font-semibold" style="border-color: var(--ar-border);">Cargos abiertos</h2>
+            <table class="ar-table">
+                <thead><tr><th>Fecha</th><th>Nº</th><th>Concepto</th><th class="text-right">Abierto</th><th>Doc.</th></tr></thead>
+                <tbody>
+                    @foreach ($openCharges as $ch)
+                        <tr>
+                            <td>{{ $ch->charged_on?->format('d/m/Y') }}</td>
+                            <td><a href="{{ route('charges.show', $ch) }}" style="color: var(--ar-brand);">{{ $ch->number }}</a></td>
+                            <td>{{ $ch->concept }}</td>
+                            <td class="text-right">{{ number_format((float) $ch->amount_open, 2, ',', '.') }} {{ $ch->currency_code }}</td>
+                            <td>{{ $ch->documental_status->label() }}</td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
         </div>
     @endif
 
-    @can('clients.create')
-        <form method="POST" action="{{ route('clients.ledger.credit.apply', $client) }}" class="ar-card mb-4 flex flex-wrap items-end gap-2 p-4">
+    @can('clients.regularize')
+        <form method="POST" action="{{ route('clients.regularize', $client) }}" class="ar-card mb-4 grid gap-2 p-4 sm:grid-cols-6">
             @csrf
+            <h2 class="sm:col-span-6 font-semibold">Regularizar CC (solo autorizados · movimiento auditado)</h2>
             <div>
-                <label class="ar-label">Aplicar crédito</label>
-                <select name="currency_code" class="ar-input">
-                    <option value="USD">USD</option>
-                    <option value="ARS">ARS</option>
-                </select>
+                <label class="ar-label">Moneda</label>
+                <select name="currency_code" class="ar-input"><option value="ARS">ARS</option><option value="USD">USD</option></select>
             </div>
             <div>
                 <label class="ar-label">Importe</label>
                 <input type="number" step="0.01" min="0.01" name="amount" class="ar-input" required>
             </div>
-            <button class="ar-btn ar-btn-secondary">Aplicar</button>
+            <div>
+                <label class="ar-label">Efecto</label>
+                <select name="sign" class="ar-input">
+                    <option value="-1">Aumentar deuda (IN)</option>
+                    <option value="1">A favor cliente (OUT)</option>
+                </select>
+            </div>
+            <div>
+                <label class="ar-label">Tipo</label>
+                <select name="regularization_kind" class="ar-input">
+                    <option value="omitted_charge">Cargo omitido</option>
+                    <option value="omitted_payment">Cobro omitido</option>
+                    <option value="opening_balance">Saldo apertura</option>
+                    <option value="misapplied_payment">Pago mal aplicado</option>
+                    <option value="historical_correction">Corrección histórica</option>
+                    <option value="reclassification">Reclasificación</option>
+                    <option value="other">Otro</option>
+                </select>
+            </div>
+            <div>
+                <label class="ar-label">Fecha</label>
+                <input type="date" name="entry_date" class="ar-input" value="{{ now()->toDateString() }}" required>
+            </div>
+            <div class="sm:col-span-6">
+                <label class="ar-label">Motivo obligatorio</label>
+                <input name="reason" class="ar-input" required>
+            </div>
+            <div class="sm:col-span-6"><button class="ar-btn ar-btn-secondary">Registrar regularización</button></div>
         </form>
     @endcan
 
     <div class="ar-card overflow-x-auto">
-        <h2 class="border-b px-4 py-3 font-semibold" style="border-color: var(--ar-border);">Movimientos de cuenta corriente</h2>
+        <h2 class="border-b px-4 py-3 font-semibold" style="border-color: var(--ar-border);">Detalle cronológico de cuenta corriente</h2>
         <table class="ar-table">
             <thead>
                 <tr>
                     <th>Fecha</th>
                     <th>Tipo</th>
+                    <th>Origen</th>
+                    <th>Descripción</th>
                     <th>Moneda</th>
                     <th class="text-right">Importe</th>
-                    <th class="text-right">Efecto</th>
-                    <th>Finanzas</th>
+                    <th class="text-right">Saldo acum. (a cobrar)</th>
                     <th>Estado</th>
-                    <th></th>
                 </tr>
             </thead>
             <tbody>
                 @forelse ($entries as $entry)
+                    @php
+                        $tone = \App\Support\UiSemantics::kpiClass($entry->running_display, \App\Support\UiSemantics::MODE_CLIENT_CC);
+                    @endphp
                     <tr>
                         <td>{{ $entry->entry_date?->format('d/m/Y') }}</td>
                         <td>{{ $entry->type->label() }}</td>
+                        <td>{{ $entry->originLabel() }}</td>
+                        <td>{{ $entry->description }}</td>
                         <td>{{ $entry->currency->code }}</td>
                         <td class="text-right">{{ number_format((float) $entry->amount, 2, ',', '.') }}</td>
-                        <td class="text-right">{{ number_format((float) $entry->signed_amount, 2, ',', '.') }}</td>
-                        <td>
-                            @if ($entry->financial_movement_id)
-                                <a href="{{ route('movements.show', $entry->financial_movement_id) }}" style="color: var(--ar-brand);">#{{ $entry->financial_movement_id }}</a>
-                            @else
-                                —
-                            @endif
-                        </td>
+                        <td class="text-right {{ $tone }}">{{ number_format((float) $entry->running_display, 2, ',', '.') }}</td>
                         <td>{{ $entry->status->value }}</td>
-                        <td>
-                            @if ($entry->isPosted())
-                                @can('clients.void')
-                                    <form method="POST" action="{{ route('clients.ledger.void', [$client, $entry]) }}" class="flex gap-1">
-                                        @csrf
-                                        <input type="text" name="void_reason" class="ar-input" placeholder="Motivo" required>
-                                        <button class="ar-btn ar-btn-secondary text-xs">Anular</button>
-                                    </form>
-                                @endcan
-                            @endif
-                        </td>
                     </tr>
                 @empty
                     <tr><td colspan="8" class="ar-muted py-6 text-center">Sin movimientos.</td></tr>
@@ -139,5 +159,4 @@
             </tbody>
         </table>
     </div>
-    <div class="mt-4">{{ $entries->links() }}</div>
 </x-app-layout>

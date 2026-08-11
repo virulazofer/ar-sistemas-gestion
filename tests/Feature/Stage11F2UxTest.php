@@ -226,14 +226,14 @@ test('etiquetas centralizadas y navegacion en espanol', function () {
         ->assertDontSee('>Dashboard</span>', false);
 });
 
-test('documentacion 11f3 existe y no implementa cobros', function () {
+test('documentacion 11f3 existe con auditoría y diseño', function () {
     $path = base_path('docs/stage11f3-functional-audit.md');
     expect(file_exists($path))->toBeTrue();
     $content = file_get_contents($path);
     expect($content)->toContain('Registrar cobro');
     expect($content)->toContain('Pago a cuenta');
-    expect($content)->toContain('REGULARIZAR CC');
-    expect($content)->toContain('No implementar');
+    expect($content)->toContain('Regularizar CC');
+    expect($content)->toContain('commercial_charges');
 });
 
 test('usuario legacy light sin palette usa actual', function () {

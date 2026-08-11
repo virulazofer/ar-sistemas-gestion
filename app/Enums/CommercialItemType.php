@@ -16,8 +16,8 @@ enum CommercialItemType: string
     public function label(): string
     {
         return match ($this) {
-            self::Product => 'Producto',
-            self::Equipment => 'Equipo',
+            self::Product => 'Producto / Unidad de stock',
+            self::Equipment => 'Equipo armado',
             self::Service => 'Servicio',
             self::Labor => 'Mano de obra',
             self::WorkOrder => 'OT',
@@ -30,13 +30,13 @@ enum CommercialItemType: string
     public function help(): string
     {
         return match ($this) {
-            self::Product => 'Producto físico de stock (FIFO).',
-            self::Equipment => 'Equipo ya armado/serializado existente y disponible.',
-            self::Service => 'Trabajo o servicio (no mueve stock de productos).',
+            self::Product => 'Producto (definición) / unidad física de stock consumida por FIFO.',
+            self::Equipment => 'Equipo ya armado (PC, etc.) con componentes y seriales; no re-consume stock.',
+            self::Service => 'Servicio o remoto (no mueve stock). Puede ir sin OT.',
             self::Labor => 'Mano de obra / horas.',
-            self::WorkOrder => 'Referencia a una orden de trabajo.',
-            self::Free => 'Ítem descriptivo libre, sin catálogo.',
-            self::BuildToOrder => 'Tipo/plantilla a fabricar; no fabrica automáticamente al presupuestar.',
+            self::WorkOrder => 'Referencia opcional a una orden de trabajo.',
+            self::Free => 'Concepto libre descriptivo, sin catálogo.',
+            self::BuildToOrder => 'Plantilla a fabricar; el presupuesto no fabrica ni mueve stock.',
             self::Subscription => 'Abono / cargo recurrente.',
         };
     }

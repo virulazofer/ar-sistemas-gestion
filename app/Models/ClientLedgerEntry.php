@@ -38,6 +38,10 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
     'subscription_id',
     'event_id',
     'document_id',
+    'commercial_charge_id',
+    'receipt_id',
+    'regularization_kind',
+    'related_ledger_entry_id',
 ])]
 class ClientLedgerEntry extends Model
 {
@@ -85,6 +89,40 @@ class ClientLedgerEntry extends Model
     public function documents(): MorphMany
     {
         return $this->morphMany(Document::class, 'documentable');
+    }
+
+    public function commercialCharge(): BelongsTo
+    {
+        return $this->belongsTo(CommercialCharge::class);
+    }
+
+    public function receipt(): BelongsTo
+    {
+        return $this->belongsTo(Receipt::class);
+    }
+
+    public function originLabel(): string
+    {
+        if ($this->receipt_id) {
+            return 'Cobro';
+        }
+        if ($this->commercial_charge_id) {
+            return 'Cargo';
+        }
+        if ($this->sale_id) {
+            return 'Venta';
+        }
+        if ($this->subscription_id) {
+            return 'Abono';
+        }
+        if ($this->work_order_id) {
+            return 'OT';
+        }
+        if ($this->regularization_kind) {
+            return 'Regularización';
+        }
+
+        return $this->type?->label() ?? 'CC';
     }
 
     public function scopePosted(Builder $query): Builder

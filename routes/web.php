@@ -4,6 +4,9 @@ use App\Http\Controllers\Catalog\ProductController;
 use App\Http\Controllers\Clients\ClientController;
 use App\Http\Controllers\Clients\ClientCurrentAccountController;
 use App\Http\Controllers\Clients\ClientLedgerController;
+use App\Http\Controllers\Commercial\CommercialChargeController;
+use App\Http\Controllers\Commercial\DocumentalControlController;
+use App\Http\Controllers\Commercial\ReceiptController;
 use App\Http\Controllers\Equipment\EquipmentController;
 use App\Http\Controllers\Equipment\EquipmentTypeController;
 use App\Http\Controllers\Inventory\StockController;
@@ -179,6 +182,9 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/clientes/{client}/cc/{entry}/anular', [ClientLedgerController::class, 'void'])
         ->middleware('permission:clients.void')
         ->name('clients.ledger.void');
+    Route::post('/clientes/{client}/regularizar', [ClientController::class, 'regularize'])
+        ->middleware('permission:clients.regularize')
+        ->name('clients.regularize');
 
     // Proveedores + CC
     Route::get('/proveedores', [SupplierController::class, 'index'])
@@ -407,6 +413,46 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/ventas/{sale}/documentos', [SaleController::class, 'storeDocument'])
         ->middleware('permission:documents.create')
         ->name('sales.documents.store');
+
+    // Cargos comerciales
+    Route::get('/cargos', [CommercialChargeController::class, 'index'])
+        ->middleware('permission:charges.view')
+        ->name('charges.index');
+    Route::middleware('permission:charges.create')->group(function () {
+        Route::get('/cargos/crear', [CommercialChargeController::class, 'create'])->name('charges.create');
+        Route::post('/cargos', [CommercialChargeController::class, 'store'])->name('charges.store');
+    });
+    Route::get('/cargos/{charge}', [CommercialChargeController::class, 'show'])
+        ->middleware('permission:charges.view')
+        ->name('charges.show');
+    Route::post('/cargos/{charge}/anular', [CommercialChargeController::class, 'void'])
+        ->middleware('permission:charges.void')
+        ->name('charges.void');
+    Route::post('/cargos/{charge}/comprobante', [CommercialChargeController::class, 'storeVoucher'])
+        ->middleware('permission:documents.create')
+        ->name('charges.vouchers.store');
+
+    // Cobros
+    Route::get('/cobros', [ReceiptController::class, 'index'])
+        ->middleware('permission:receipts.view')
+        ->name('receipts.index');
+    Route::middleware('permission:receipts.create')->group(function () {
+        Route::get('/cobros/crear', [ReceiptController::class, 'create'])->name('receipts.create');
+        Route::post('/cobros', [ReceiptController::class, 'store'])->name('receipts.store');
+    });
+    Route::get('/cobros/{receipt}', [ReceiptController::class, 'show'])
+        ->middleware('permission:receipts.view')
+        ->name('receipts.show');
+    Route::post('/cobros/{receipt}/anular', [ReceiptController::class, 'void'])
+        ->middleware('permission:receipts.void')
+        ->name('receipts.void');
+    Route::post('/cobros/{receipt}/comprobante', [ReceiptController::class, 'storeVoucher'])
+        ->middleware('permission:documents.create')
+        ->name('receipts.vouchers.store');
+
+    Route::get('/operaciones-sin-comprobante', [DocumentalControlController::class, 'index'])
+        ->middleware('permission:charges.view')
+        ->name('documental.pending');
 
     Route::get('/categorias', [CategoryController::class, 'index'])
         ->middleware('permission:categories.view')

@@ -3,7 +3,7 @@
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
                 <h1 class="text-xl font-semibold">{{ $subscription->name }}</h1>
-                <p class="ar-muted text-sm">{{ $subscription->client->name }} · {{ $subscription->periodicity->label() }} · {{ $subscription->status->label() }}</p>
+                <p class="ar-muted text-sm">{{ $subscription->client->labelWithCode() }} · {{ $subscription->periodicity->label() }} · {{ $subscription->status->label() }}</p>
             </div>
             <a href="{{ route('subscriptions.index') }}" class="ar-btn ar-btn-secondary">Listado</a>
         </div>
@@ -17,15 +17,16 @@
         <div class="ar-card p-4 text-sm">
             <p><span class="ar-muted">Inicio:</span> {{ $subscription->starts_on?->format('d/m/Y') }}</p>
             <p><span class="ar-muted">Fin:</span> {{ $subscription->ends_on?->format('d/m/Y') ?: '—' }}</p>
+            <p><span class="ar-muted">Último período:</span> {{ $subscription->periods->sortByDesc('id')->first()?->period_key ?: '—' }}</p>
             <p><span class="ar-muted">Próxima generación:</span> {{ $subscription->next_generation_on?->format('d/m/Y') }}</p>
         </div>
         <div class="space-y-2">
             @can('subscriptions.generate')
                 <form method="POST" action="{{ route('subscriptions.generate', $subscription) }}" class="ar-card space-y-2 p-4">
                     @csrf
-                    <label class="ar-label">Generar período (YYYY-MM)</label>
+                    <label class="ar-label">Generar cargo ahora (YYYY-MM opcional)</label>
                     <input name="period_key" class="ar-input" placeholder="2026-09">
-                    <button class="ar-btn ar-btn-primary w-full">Generar ahora</button>
+                    <button class="ar-btn ar-btn-primary w-full">Generar cargo ahora</button>
                 </form>
             @endcan
             @can('subscriptions.edit')
@@ -45,19 +46,28 @@
     <div class="ar-card overflow-x-auto">
         <h2 class="border-b px-4 py-3 font-semibold" style="border-color: var(--ar-border);">Períodos / cargos</h2>
         <table class="ar-table">
-            <thead><tr><th>Clave</th><th>Desde</th><th>Hasta</th><th class="text-right">Importe</th><th>CC</th><th>Generado</th></tr></thead>
+            <thead><tr><th>Clave</th><th>Desde</th><th>Hasta</th><th class="text-right">Importe</th><th>Cargo</th><th>Cobro</th><th>Doc.</th><th>Generado</th></tr></thead>
             <tbody>
                 @forelse ($subscription->periods as $period)
+                    @php $ch = $period->commercialCharge; @endphp
                     <tr>
                         <td>{{ $period->period_key }}</td>
                         <td>{{ $period->period_start?->format('d/m/Y') }}</td>
                         <td>{{ $period->period_end?->format('d/m/Y') }}</td>
                         <td class="text-right">{{ $period->currency_code }} {{ number_format((float) $period->amount, 2, ',', '.') }}</td>
-                        <td>#{{ $period->client_ledger_entry_id }}</td>
+                        <td>
+                            @if ($ch)
+                                <a href="{{ route('charges.show', $ch) }}" style="color: var(--ar-brand);">{{ $ch->number }}</a>
+                            @else
+                                #{{ $period->client_ledger_entry_id }}
+                            @endif
+                        </td>
+                        <td>{{ $ch?->status->label() ?? '—' }}</td>
+                        <td>{{ $ch?->documental_status->label() ?? ($period->documental_status?->label() ?? '—') }}</td>
                         <td>{{ $period->generated_at?->format('d/m/Y H:i') }}</td>
                     </tr>
                 @empty
-                    <tr><td colspan="6" class="ar-muted py-6 text-center">Sin períodos generados.</td></tr>
+                    <tr><td colspan="8" class="ar-muted py-6 text-center">Sin períodos generados.</td></tr>
                 @endforelse
             </tbody>
         </table>

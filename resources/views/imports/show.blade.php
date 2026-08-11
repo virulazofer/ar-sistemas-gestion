@@ -33,6 +33,7 @@
         <div class="ar-card p-4"><p class="ar-muted text-sm">Verde</p><p class="text-xl font-bold">{{ $batch->rows_green }}</p></div>
         <div class="ar-card p-4"><p class="ar-muted text-sm">Amarillo</p><p class="text-xl font-bold">{{ $batch->rows_yellow }}</p></div>
         <div class="ar-card p-4"><p class="ar-muted text-sm">Rojo</p><p class="text-xl font-bold">{{ $batch->rows_red }}</p></div>
+        <div class="ar-card p-4"><p class="ar-muted text-sm">Pendiente de completar</p><p class="text-xl font-bold">{{ $batch->classification_summary['pending_complete'] ?? $batch->preview_payload['summary']['pending_complete'] ?? 0 }}</p></div>
     </div>
 
     @if ($batch->importer_kind === 'historical_movements')

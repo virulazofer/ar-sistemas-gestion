@@ -1,70 +1,196 @@
-# Etapa 11F-3 — Auditoría funcional (solo documentación)
+# Etapa 11F-3 — Auditoría funcional + diseño de implementación
 
-> Documento de requisitos. **No implementar en 11F-2.** Cobros y Regularización CC quedan fuera del alcance actual.
+> Auditoría previa a código (flujos A–F) y contrato de comportamiento para Cobros, Cargos, CC y Regularización.
 
 ## Objetivo
 
-Definir el comportamiento esperado de **Cobros** y **Regularización de cuenta corriente (CC)** antes de la implementación en 11F-3.
+Completar flujos operativos centrales sin reescribir lo que ya funciona, distinguiendo siempre:
 
-## Entradas de usuario (crítico)
+| Concepto | Entidad | Efecto |
+|----------|---------|--------|
+| **A. Cargo / operación comercial** | `commercial_charges` | Deuda comercial abierta (importe, tipo, estado cobro) |
+| **B. Movimiento de CC** | `client_ledger_entries` | Mayor CC (IN↑ deuda / OUT↓); no editar saldo directo |
+| **C. Cobro** | `receipts` + `movements` (ingreso) | Dinero en cuenta financiera + CC OUT + aplicaciones |
+| **D. Comprobante asociado** | `commercial_vouchers` | Metadata documental opcional (no ARCA) |
 
-Debe existir al menos una de estas rutas de acceso:
+## Convención CC (sin cambios)
 
-1. **Comercial → Cobros** (módulo / listado de cobros).
-2. **Cliente → Cuenta corriente → Registrar cobro** (acción contextual sobre un cliente).
+- Persistencia ledger (perspectiva cliente): cargo `signed_amount < 0`, cobro/crédito `> 0`.
+- Presentación negocio (`UiSemantics::clientCcDisplayBalance`): **+ rojo = nos deben**, **− verde = a favor**, 0 neutro.
+- CC IN = aumenta deuda; CC OUT = reduce deuda.
 
-Ambas deben converger en la misma lógica de negocio y auditoría.
+---
 
-## Flujo: deuda insuficiente al cobrar
+## Auditoría flujos A–F (antes de código)
 
-Al intentar registrar un cobro cuyo importe supera la deuda abierta (o no hay cargos pendientes suficientes), el sistema **debe presentar opciones explícitas** y **nunca inventar una factura automáticamente**:
+### A. Abono → CC → Cobro
 
-| Opción | Comportamiento |
-|--------|----------------|
-| **A) Crear cargo faltante y luego cobrar** | Generar el movimiento/cargo omitido (con trazabilidad), y aplicar el cobro sobre esa deuda. |
-| **B) Pago a cuenta** | Registrar el excedente como saldo a favor del cliente (CC negativa / favorable en convención de presentación). |
-| **C) Cancelar** | Abortar sin cambios. |
+| Aspecto | Estado |
+|---------|--------|
+| Crear abono | **OK** — `SubscriptionService::create` |
+| Generar cargo período | **OK** — `generatePeriod` → `ClientLedgerEntry` Charge (CC IN), idempotente por `subscription_id + period_key` |
+| Generar vencidos / generar uno | **OK** — rutas + comando scheduler |
+| Comprobante fiscal auto | **OK** — no se genera (correcto) |
+| Entidad cargo comercial abierta | **FALTA** — solo ledger; no hay `amount_open` ni aplicaciones |
+| UI “Generar cargo ahora” | **PARCIAL** — existe `POST /abonos/{id}/generar`; falta claridad de estados cobro/documental en listado |
+| Cobro aplicado al cargo del abono | **FALTA** — pago genérico CC sin vínculo cargo↔cobro |
+| Reutilizable | `SubscriptionService`, `ClientLedgerService` |
 
-**Prohibido:** auto-crear factura/comprobante inventado para “cuadrar” el cobro sin decisión del usuario.
+### B. Presupuesto → Venta contado
 
-## Regularizar CC (usuarios autorizados)
+| Aspecto | Estado |
+|---------|--------|
+| Presupuesto sin dinero/CC/stock | **OK** — `QuotationService` no toca finanzas/stock/CC |
+| Convertir → venta borrador | **OK** |
+| Confirmar contado | **OK** — stock FIFO + cargo CC + pago atómico (`SaleService::confirm` cash) |
+| Labels ítems | **PARCIAL** — hay Producto/Equipo/Servicio/libre; falta distinguir Unidad vs Equipo armado en UI |
+| Comprobante / estado documental | **FALTA** |
+| Reutilizable | `QuotationService`, `SaleService` |
 
-Acción **REGULARIZAR CC** disponible solo para perfiles con permiso específico (a definir en 11F-3).
+### C. Presupuesto → Venta crédito → Cobro
 
-Casos de uso típicos:
+| Aspecto | Estado |
+|---------|--------|
+| Confirmar crédito | **OK** — stock + CC IN, sin ingreso financiero |
+| Cobro posterior aplicado a la venta | **FALTA** — pago genérico; no `receipt_applications` |
+| Venta parcial (parte cobrada + resto CC) | **FALTA** — solo `cash\|credit` |
+| Doble contabilización | **OK hoy** en contado/crédito; preservar al integrar cargos/cobros |
+| Reutilizable | `SaleService::confirm` credit path |
 
-- Cargo omitido
-- Cobro omitido
-- Aplicación incorrecta de un cobro
-- Saldo de apertura
-- Corrección histórica puntual
+### D. Compra → Stock
 
-### Reglas
+| Aspecto | Estado |
+|---------|--------|
+| Contado → egreso financiero único | **OK** |
+| Crédito → CC proveedor | **OK** |
+| Ingreso stock + lotes FIFO | **OK** — `InventoryService::receiveFromPurchase` |
+| Anulación con reverse | **OK** |
+| Doble egreso | **No observado** |
+| Reutilizable | `PurchaseService` completo |
 
-- Toda regularización se hace mediante **movimientos auditados** (quién, cuándo, motivo, importes, referencias).
-- **Nunca** editar el saldo de CC en forma directa (UPDATE a columna/balance).
-- Debe quedar historial consultable en auditoría y en el mayor de CC del cliente.
+### E. Producto → Unidad → Equipo
 
-## Convención visual CC (recordatorio 11F-1 / 11F-2)
+| Aspecto | Estado |
+|---------|--------|
+| Producto (definición) vs Unidad (instancia) | **OK** — `Product` / `InventoryUnit` |
+| Condición ≠ Estado | **OK** — enums separados + historial `InventoryUnitEvent` |
+| Estado “Reparación” | **FALTA** en `UnitStatus` (hay Available/InUse/Reserved/Sold/Scrapped) |
+| Equipo armado con componentes/seriales/costo | **OK** — `EquipmentAssemblyService` |
+| No consumir componentes dos veces | **OK** (tests Etapa 6/10) |
+| Nav Inventario agrupado | **PARCIAL** — Stock/Compras en Inventario; Productos/Equipos en Maestros/Operaciones |
+| Reutilizable | `InventoryUnitService`, `EquipmentAssemblyService` |
 
-Perspectiva de presentación “a cobrar” (negocio):
+### F. Servicio / Remoto → Cargo → Cobro
 
-| Saldo mostrado | Significado | Color |
-|----------------|-------------|--------|
-| **+** (positivo) | El cliente **nos debe** | Rojo (atención) |
-| **−** (negativo) | Saldo a favor del cliente / crédito | Verde (favorable) |
-| **0** | Neutro | Neutro / muted |
+| Aspecto | Estado |
+|---------|--------|
+| Cargo manual CC | **OK** — `ClientLedgerController` + `registerCharge` |
+| OT → cargo al cerrar | **OK** — `WorkOrderService` |
+| Servicio sin OT obligatoria | **PARCIAL** — posible vía cargo manual; falta UI “Cargos al cliente” tipificada |
+| Cobro con aplicación | **FALTA** |
+| Reutilizable | `ClientLedgerService`, OT opcional |
 
-Los colores semánticos (`UiSemantics` / tokens KPI) son independientes de la paleta de marca (skins).
+### Resumen gaps prioritarios
 
-## Fuera de alcance de este documento
+1. Código cliente único permanente (`code`, no PK).
+2. Entidad **cargo comercial** + estados de cobro/documental.
+3. Entidad **cobro (receipt)** + tabla **aplicaciones** explícitas.
+4. Flujo deuda insuficiente A/B/C (nunca auto-factura).
+5. Pago a cuenta + consumo de crédito en cargos futuros.
+6. Regularizar CC (permiso + motivo; reutilizar adjustments).
+7. Comprobantes opcionales + consulta “sin comprobante”.
+8. Venta parcial; labels presupuestos; nav Inventario; estado unidad Reparación.
+9. Permisos charges/receipts/regularize/edit_code.
 
-- Detalle de pantallas, APIs y migraciones (se define al iniciar 11F-3).
-- Importación histórica y recálculos financieros masivos.
-- Cambios a ranking Top 5 / dashboard de gestión (preservar 11F-1).
+### Duplicados / no reescribir
 
-## Criterio de aceptación previo a código (11F-3)
+- **No** reemplazar `client_ledger_entries` ni `ClientLedgerService` — son el mayor CC.
+- **No** rehacer compras/FIFO/equipos/abonos/presupuestos base.
+- **No** tocar import 11E ni Dashboard 11F-1 (salvo enlaces).
+- Nav/skins/search 11F-2: solo integrar rutas nuevas.
 
-1. Flujos A/B/C documentados y validados con negocio.
-2. Matriz de permisos para Cobros y Regularizar CC.
-3. Casos de prueba: deuda exacta, deuda insuficiente (A/B/C), pago a cuenta, regularización auditada, intento de edición directa de saldo rechazado.
+---
+
+## Diseño de implementación (11F-3)
+
+### Cliente código
+
+- Columna `clients.code` (unsigned int, unique, not null after backfill).
+- Formato UI: `sprintf('%04d', $code)` → `0001 — DAASA`.
+- Auto-asignación al crear; inmutable salvo `clients.edit_code`.
+- Búsqueda por código en index, selectores, global search.
+
+### Cargos comerciales
+
+Tipos: `subscription`, `sale`, `repair`, `installation`, `remote`, `service`, `authorized_adjustment`, `other`.
+
+Estados cobro: `pending`, `partial`, `collected`, `voided`.
+
+Estados documentales: `none`, `pending`, `associated`, `not_required`, `review`.
+
+Al crear a crédito: cargo + CC IN (ledger Charge). Sin ingreso financiero.
+
+Orígenes: manual, sale, subscription period, work order.
+
+### Cobros
+
+Rutas: `Comercial → Cobros` y `Cliente → CC → Registrar cobro`.
+
+Confirmación atómica: movimiento ingreso + ledger Payment (CC OUT) + `receipt_applications` + actualización `amount_open` del cargo.
+
+Modos de aplicación: auto por antigüedad, manual, parcial, multi-cargo.
+
+### Deuda insuficiente
+
+Mensaje + opciones A (crear cargo faltante y aplicar) / B (pago a cuenta) / C (cancelar). Nunca auto-cargo ni auto-factura.
+
+### Pago a cuenta
+
+Aplica a deuda abierta; excedente queda como saldo a favor (ledger neto positivo → display negativo verde). Cargos futuros pueden consumir crédito (`applyCredit` / aplicación automática opcional al crear cargo).
+
+### Regularizar CC
+
+Reutiliza `registerAdjustment` + metadata (`reason`, usuario, refs). Permiso `clients.regularize`. Nunca UPDATE de saldo.
+
+### Comprobantes
+
+Tabla `commercial_vouchers` (tipo Factura/NC/ND/Otro, PV, número, fecha, importe, campos fiscales futuros nullable). Asociación posterior sin duplicar cargo.
+
+Consulta: operaciones con documental `none|pending|review`.
+
+### Ventas
+
+- Contado/crédito: crear `commercial_charge` además del ledger existente.
+- Parcial: `payment_mode=partial` + `amount_paid` → cargo total + cobro parcial aplicado.
+- `documental_status` en sales.
+
+### Abonos
+
+Al generar período: también `commercial_charge`. UI: Generar cargo ahora + estados cobro/documental.
+
+### Anulaciones
+
+Void (no delete): cobro revierte finanzas + CC + aplicaciones; cargo revierte CC y bloquea si hay aplicaciones posted.
+
+### Permisos nuevos
+
+- `charges.*` (view/create/void)
+- `receipts.*` (view/create/apply/void)
+- `clients.regularize`, `clients.edit_code`
+- Acción `apply` en catálogo
+
+### Migraciones
+
+Solo las necesarias; backfill códigos y cargos desde ledger Charge posted existentes (sin tocar import 11E).
+
+### Criterios de aceptación
+
+1. Flujos A/B/C deuda insuficiente.
+2. Matriz permisos cobros/regularizar.
+3. Tests 1–28 + suite completa.
+4. Smoke staging con datos TEST y cleanup.
+5. Informe final §35; DETENERSE.
+
+## Casos de prueba mínimos (referencia §32)
+
+Código único · cargo→CC IN · cobro→finanzas+CC OUT · parcial · multi-cargo · multi-cobro · pago a cuenta · crédito consume · cargo desde cobro · sin comprobante · asociar después · abono · no duplica período · venta contado/crédito/parcial · no doble ingreso · compra contado/crédito · stock una vez · unidad condición/estado · equipo componentes · OT opcional · regularización · permisos · reversión cobro/cargo · CC rojo/verde.

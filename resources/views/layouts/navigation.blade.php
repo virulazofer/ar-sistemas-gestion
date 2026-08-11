@@ -39,7 +39,7 @@
             </div>
         </div>
 
-        @canany(['clients.view', 'suppliers.view', 'products.view', 'categories.view', 'equipment.view'])
+        @canany(['clients.view', 'suppliers.view', 'categories.view'])
             <div class="ar-side-group">
                 <button type="button" class="ar-side-group-btn" @click="toggleGroup('mae')">
                     <span class="ar-side-ico-wrap"><svg class="ar-side-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>
@@ -47,10 +47,8 @@
                     <svg class="ar-side-chevron ml-auto h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" :class="groups.mae ? 'rotate-180' : ''"><path d="M5.25 7.5 10 12.25 14.75 7.5"/></svg>
                 </button>
                 <div class="ar-side-sub" x-show="groups.mae && (drawer || !collapsed)" x-cloak>
-                    @can('clients.view')<a href="{{ route('clients.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('clients.*') ? 'is-active' : '' }}"><span class="ar-side-label">Clientes</span></a>@endcan
+                    @can('clients.view')<a href="{{ route('clients.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('clients.index') || request()->routeIs('clients.create') || request()->routeIs('clients.show') || request()->routeIs('clients.edit') || request()->routeIs('clients.current-accounts') ? 'is-active' : '' }}"><span class="ar-side-label">Clientes</span></a>@endcan
                     @can('suppliers.view')<a href="{{ route('suppliers.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('suppliers.*') ? 'is-active' : '' }}"><span class="ar-side-label">Proveedores</span></a>@endcan
-                    @can('products.view')<a href="{{ route('products.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('products.*') ? 'is-active' : '' }}"><span class="ar-side-label">Productos</span></a>@endcan
-                    @can('equipment.view')<a href="{{ route('equipment.types.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('equipment.types.*') ? 'is-active' : '' }}"><span class="ar-side-label">Tipos de equipo</span></a>@endcan
                     @can('categories.view')<a href="{{ route('categories.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('categories.*') || request()->routeIs('subcategories.*') ? 'is-active' : '' }}"><span class="ar-side-label">Categorías financieras</span></a>@endcan
                     @can('reports.view')<a href="{{ route('reports.show', 'chart-accounts') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('reports.show') && request()->route('type') === 'chart-accounts' ? 'is-active' : '' }}"><span class="ar-side-label">Plan de cuentas</span></a>@endcan
                 </div>
@@ -72,7 +70,7 @@
             </div>
         @endcanany
 
-        @canany(['quotations.view', 'sales.view', 'subscriptions.view'])
+        @canany(['quotations.view', 'sales.view', 'subscriptions.view', 'charges.view', 'receipts.view'])
             <div class="ar-side-group">
                 <button type="button" class="ar-side-group-btn" @click="toggleGroup('com')">
                     <span class="ar-side-ico-wrap"><svg class="ar-side-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 7h10v4H7zM5 11h14v8H5z"/></svg></span>
@@ -83,11 +81,14 @@
                     @can('quotations.view')<a href="{{ route('quotations.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('quotations.*') ? 'is-active' : '' }}"><span class="ar-side-label">Presupuestos</span></a>@endcan
                     @can('sales.view')<a href="{{ route('sales.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('sales.*') ? 'is-active' : '' }}"><span class="ar-side-label">Ventas</span></a>@endcan
                     @can('subscriptions.view')<a href="{{ route('subscriptions.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('subscriptions.*') ? 'is-active' : '' }}"><span class="ar-side-label">Abonos</span></a>@endcan
+                    @can('charges.view')<a href="{{ route('charges.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('charges.*') ? 'is-active' : '' }}"><span class="ar-side-label">Cargos</span></a>@endcan
+                    @can('receipts.view')<a href="{{ route('receipts.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('receipts.*') ? 'is-active' : '' }}"><span class="ar-side-label">Cobros</span></a>@endcan
+                    @can('charges.view')<a href="{{ route('documental.pending') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('documental.*') ? 'is-active' : '' }}"><span class="ar-side-label">Sin comprobante</span></a>@endcan
                 </div>
             </div>
         @endcanany
 
-        @canany(['work_orders.view', 'equipment.view'])
+        @can('work_orders.view')
             <div class="ar-side-group">
                 <button type="button" class="ar-side-group-btn" @click="toggleGroup('ops')">
                     <span class="ar-side-ico-wrap"><svg class="ar-side-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 7h6v6M20 7l-8.5 8.5L8 12"/></svg></span>
@@ -95,13 +96,12 @@
                     <svg class="ar-side-chevron ml-auto h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" :class="groups.ops ? 'rotate-180' : ''"><path d="M5.25 7.5 10 12.25 14.75 7.5"/></svg>
                 </button>
                 <div class="ar-side-sub" x-show="groups.ops && (drawer || !collapsed)" x-cloak>
-                    @can('work_orders.view')<a href="{{ route('work-orders.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('work-orders.*') ? 'is-active' : '' }}"><span class="ar-side-label">Órdenes de trabajo</span></a>@endcan
-                    @can('equipment.view')<a href="{{ route('equipment.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('equipment.index') || request()->routeIs('equipment.create') || request()->routeIs('equipment.show') || request()->routeIs('equipment.edit') ? 'is-active' : '' }}"><span class="ar-side-label">Equipos</span></a>@endcan
+                    <a href="{{ route('work-orders.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('work-orders.*') ? 'is-active' : '' }}"><span class="ar-side-label">Órdenes de trabajo</span></a>
                 </div>
             </div>
-        @endcanany
+        @endcan
 
-        @canany(['stock.view', 'purchases.view'])
+        @canany(['stock.view', 'purchases.view', 'products.view', 'equipment.view'])
             <div class="ar-side-group">
                 <button type="button" class="ar-side-group-btn" @click="toggleGroup('inv')">
                     <span class="ar-side-ico-wrap"><svg class="ar-side-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8.5 12 3 3 8.5v7L12 21l9-5.5v-7Z"/><path d="M12 12v9M3 8.5l9 3.5 9-3.5"/></svg></span>
@@ -109,7 +109,10 @@
                     <svg class="ar-side-chevron ml-auto h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" :class="groups.inv ? 'rotate-180' : ''"><path d="M5.25 7.5 10 12.25 14.75 7.5"/></svg>
                 </button>
                 <div class="ar-side-sub" x-show="groups.inv && (drawer || !collapsed)" x-cloak>
-                    @can('stock.view')<a href="{{ route('stock.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('stock.*') ? 'is-active' : '' }}"><span class="ar-side-label">Stock</span></a>@endcan
+                    @can('products.view')<a href="{{ route('products.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('products.*') ? 'is-active' : '' }}"><span class="ar-side-label">Productos</span></a>@endcan
+                    @can('stock.view')<a href="{{ route('stock.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('stock.*') ? 'is-active' : '' }}"><span class="ar-side-label">Stock / Unidades</span></a>@endcan
+                    @can('equipment.view')<a href="{{ route('equipment.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('equipment.index') || request()->routeIs('equipment.create') || request()->routeIs('equipment.show') || request()->routeIs('equipment.edit') ? 'is-active' : '' }}"><span class="ar-side-label">Equipos</span></a>@endcan
+                    @can('equipment.view')<a href="{{ route('equipment.types.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('equipment.types.*') ? 'is-active' : '' }}"><span class="ar-side-label">Tipos de equipo</span></a>@endcan
                     @can('purchases.view')<a href="{{ route('purchases.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('purchases.*') ? 'is-active' : '' }}"><span class="ar-side-label">Compras</span></a>@endcan
                 </div>
             </div>

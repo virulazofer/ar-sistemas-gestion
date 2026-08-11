@@ -2,8 +2,9 @@
 
 namespace App\Services\Sales;
 
-use App\Enums\ClientLedgerType;
+use App\Enums\CommercialChargeType;
 use App\Enums\CommercialItemType;
+use App\Enums\DocumentalStatus;
 use App\Enums\EquipmentStatus;
 use App\Enums\MovementStatus;
 use App\Enums\SaleStatus;
@@ -18,6 +19,8 @@ use App\Models\SaleItem;
 use App\Models\Setting;
 use App\Services\AuditLogger;
 use App\Services\Clients\ClientLedgerService;
+use App\Services\Commercial\CommercialChargeService;
+use App\Services\Commercial\ReceiptService;
 use App\Services\Equipment\EquipmentAssemblyService;
 use App\Services\Finance\ExchangeRateService;
 use App\Services\Inventory\InventoryService;
@@ -32,6 +35,8 @@ class SaleService
     public function __construct(
         private readonly InventoryService $inventory,
         private readonly ClientLedgerService $ledger,
+        private readonly CommercialChargeService $charges,
+        private readonly ReceiptService $receipts,
         private readonly EquipmentAssemblyService $equipment,
         private readonly ExchangeRateService $rates,
         private readonly AuditLogger $audit,
@@ -185,6 +190,8 @@ class SaleService
      * @param  array{
      *   payment_mode: string,
      *   financial_account_id?: int,
+     *   amount_paid?: string|float|int,
+     *   documental_status?: string,
      *   force_fail?: bool,
      *   force_fail_stock?: bool,
      *   force_fail_charge?: bool,
@@ -198,15 +205,15 @@ class SaleService
         }
 
         $mode = $data['payment_mode'] ?? null;
-        if (! in_array($mode, [Sale::MODE_CASH, Sale::MODE_CREDIT], true)) {
-            throw new InvalidArgumentException('Modo de pago inválido (cash|credit).');
+        if (! in_array($mode, [Sale::MODE_CASH, Sale::MODE_CREDIT, Sale::MODE_PARTIAL], true)) {
+            throw new InvalidArgumentException('Modo de pago inválido (cash|credit|partial).');
         }
-        if ($mode === Sale::MODE_CASH && empty($data['financial_account_id'])) {
-            throw new InvalidArgumentException('Venta contado requiere cuenta financiera.');
+        if (in_array($mode, [Sale::MODE_CASH, Sale::MODE_PARTIAL], true) && empty($data['financial_account_id'])) {
+            throw new InvalidArgumentException('Venta contado/parcial requiere cuenta financiera.');
         }
 
         return DB::transaction(function () use ($sale, $data, $mode) {
-            $sale = Sale::query()->lockForUpdate()->with('items')->findOrFail($sale->id);
+            $sale = Sale::query()->lockForUpdate()->with(['items', 'client'])->findOrFail($sale->id);
             if ($sale->status !== SaleStatus::Draft) {
                 throw new InvalidArgumentException('La venta ya no está en borrador.');
             }
@@ -221,46 +228,70 @@ class SaleService
             }
 
             $this->recalculate($sale->fresh(['items']));
-            $sale = $sale->fresh(['items']);
+            $sale = $sale->fresh(['items', 'client']);
 
             $chargeAmount = Money::normalize((string) $sale->total);
+            $commercialCharge = null;
             $charge = null;
             $payment = null;
             $movementId = null;
+            $amountPaid = null;
 
             if (Money::compare($chargeAmount, '0') > 0) {
-                $charge = $this->ledger->createEntry(
-                    $sale->client,
-                    ClientLedgerType::Charge,
-                    [
-                        'currency_code' => $sale->currency_code,
-                        'amount' => $chargeAmount,
-                        'entry_date' => $sale->sold_on?->toDateString() ?? now()->toDateString(),
-                        'description' => 'Venta '.$sale->number,
-                        'sale_id' => $sale->id,
-                        'quote_id' => $sale->quotation_id,
-                        'force_fail' => ! empty($data['force_fail_charge']),
-                    ],
-                    sign: -1,
-                    requiresFinance: false,
-                    wrapTransaction: false,
-                );
+                if (! empty($data['force_fail_charge'])) {
+                    throw new RuntimeException('Falla simulada en cargo de venta.');
+                }
 
-                if ($mode === Sale::MODE_CASH) {
-                    $pay = $this->ledger->registerPayment($sale->client, [
+                $commercialCharge = $this->charges->create([
+                    'client_id' => $sale->client_id,
+                    'charge_type' => CommercialChargeType::Sale->value,
+                    'concept' => 'Venta '.$sale->number,
+                    'amount' => $chargeAmount,
+                    'currency_code' => $sale->currency_code,
+                    'charged_on' => $sale->sold_on?->toDateString() ?? now()->toDateString(),
+                    'sale_id' => $sale->id,
+                    'documental_status' => $data['documental_status'] ?? DocumentalStatus::None->value,
+                    'wrap_transaction' => false,
+                ]);
+                $charge = $commercialCharge->ledgerEntry;
+
+                if ($mode === Sale::MODE_CASH || $mode === Sale::MODE_PARTIAL) {
+                    $payAmount = $mode === Sale::MODE_CASH
+                        ? $chargeAmount
+                        : Money::normalize($data['amount_paid'] ?? '0');
+
+                    if ($mode === Sale::MODE_PARTIAL) {
+                        if (! Money::isPositive($payAmount)) {
+                            throw new InvalidArgumentException('Venta parcial requiere importe cobrado > 0.');
+                        }
+                        if (Money::compare($payAmount, $chargeAmount) >= 0) {
+                            throw new InvalidArgumentException('Venta parcial: el cobro debe ser menor al total (use contado).');
+                        }
+                    }
+
+                    $amountPaid = $payAmount;
+                    $result = $this->receipts->create([
+                        'client_id' => $sale->client_id,
                         'financial_account_id' => $data['financial_account_id'],
-                        'amount' => $chargeAmount,
-                        'entry_date' => $sale->sold_on?->toDateString() ?? now()->toDateString(),
-                        'description' => 'Pago venta '.$sale->number,
-                        'sale_id' => $sale->id,
-                        'force_fail_finance' => ! empty($data['force_fail_payment']),
-                        'force_fail_after_ledger' => ! empty($data['force_fail_payment_ledger']),
-                        'wrap_transaction' => false,
+                        'amount' => $payAmount,
+                        'received_on' => $sale->sold_on?->toDateString() ?? now()->toDateString(),
+                        'concept' => 'Pago venta '.$sale->number,
+                        'application_mode' => 'manual',
+                        'applications' => [[
+                            'commercial_charge_id' => $commercialCharge->id,
+                            'amount' => $payAmount,
+                        ]],
+                        'force_fail' => ! empty($data['force_fail_payment']),
                     ]);
-                    $payment = $pay['ledger'];
-                    $movementId = $pay['movement']->id;
-                    // Vincular sale_id en pago si registerPayment lo soporta
-                    if ($payment->sale_id === null) {
+
+                    if (! empty($result['requires_decision'])) {
+                        throw new RuntimeException('No se pudo aplicar el cobro de la venta.');
+                    }
+
+                    $receipt = $result['receipt'];
+                    $payment = $receipt->ledgerEntry;
+                    $movementId = $receipt->financial_movement_id;
+                    if ($payment && $payment->sale_id === null) {
                         $payment->update(['sale_id' => $sale->id]);
                     }
                 }
@@ -273,7 +304,10 @@ class SaleService
             $sale->update([
                 'status' => SaleStatus::Confirmed,
                 'payment_mode' => $mode,
+                'amount_paid_on_confirm' => $amountPaid,
+                'documental_status' => DocumentalStatus::tryFrom((string) ($data['documental_status'] ?? 'none')) ?? DocumentalStatus::None,
                 'charge_ledger_entry_id' => $charge?->id,
+                'commercial_charge_id' => $commercialCharge?->id,
                 'payment_ledger_entry_id' => $payment?->id,
                 'financial_movement_id' => $movementId,
                 'confirmed_at' => now(),
@@ -285,9 +319,10 @@ class SaleService
                 'total' => $sale->total,
                 'total_cost' => $sale->total_cost,
                 'gross_margin' => $sale->gross_margin,
+                'commercial_charge_id' => $commercialCharge?->id,
             ], 'Venta confirmada');
 
-            return $sale->fresh(['items', 'chargeEntry', 'paymentEntry']);
+            return $sale->fresh(['items', 'chargeEntry', 'paymentEntry', 'commercialCharge']);
         });
     }
 
@@ -307,14 +342,34 @@ class SaleService
         return DB::transaction(function () use ($sale, $reason) {
             $sale = Sale::query()->lockForUpdate()->with(['items.product', 'items.equipment', 'chargeEntry', 'paymentEntry'])->findOrFail($sale->id);
 
-            // Política: anular pago primero, luego cargo, luego stock/equipo
+            // Política: anular cobro (finanzas+apps+CC OUT), luego cargo comercial, luego stock/equipo
             if ($sale->payment_ledger_entry_id) {
                 $pay = ClientLedgerEntry::query()->find($sale->payment_ledger_entry_id);
-                if ($pay && $pay->status === MovementStatus::Posted) {
+                if ($pay && $pay->receipt_id) {
+                    $receipt = \App\Models\Receipt::query()->find($pay->receipt_id);
+                    if ($receipt && $receipt->isPosted()) {
+                        $this->receipts->void($receipt, 'Anulación venta '.$sale->number.': '.$reason);
+                    }
+                } elseif ($pay && $pay->status === MovementStatus::Posted) {
                     $this->ledger->void($pay, 'Anulación venta '.$sale->number.': '.$reason);
                 }
             }
-            if ($sale->charge_ledger_entry_id) {
+            if ($sale->commercial_charge_id) {
+                $cCharge = \App\Models\CommercialCharge::query()->find($sale->commercial_charge_id);
+                if ($cCharge && $cCharge->status !== \App\Enums\CommercialChargeStatus::Voided) {
+                    // Si el cobro ya revirtió aplicaciones, el cargo queda abierto y se puede anular.
+                    try {
+                        $this->charges->void($cCharge, 'Anulación venta '.$sale->number.': '.$reason);
+                    } catch (InvalidArgumentException $e) {
+                        if ($sale->charge_ledger_entry_id) {
+                            $charge = ClientLedgerEntry::query()->find($sale->charge_ledger_entry_id);
+                            if ($charge && $charge->status === MovementStatus::Posted) {
+                                $this->ledger->void($charge, 'Anulación venta '.$sale->number.': '.$reason);
+                            }
+                        }
+                    }
+                }
+            } elseif ($sale->charge_ledger_entry_id) {
                 $charge = ClientLedgerEntry::query()->find($sale->charge_ledger_entry_id);
                 if ($charge && $charge->status === MovementStatus::Posted) {
                     $this->ledger->void($charge, 'Anulación venta '.$sale->number.': '.$reason);

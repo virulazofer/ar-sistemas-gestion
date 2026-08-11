@@ -86,8 +86,10 @@ class SaleController extends Controller
     public function confirm(Request $request, Sale $sale): RedirectResponse
     {
         $data = $request->validate([
-            'payment_mode' => ['required', Rule::in(['cash', 'credit'])],
+            'payment_mode' => ['required', Rule::in(['cash', 'credit', 'partial'])],
             'financial_account_id' => ['nullable', 'exists:financial_accounts,id'],
+            'amount_paid' => ['nullable', 'numeric', 'gt:0'],
+            'documental_status' => ['nullable', Rule::enum(\App\Enums\DocumentalStatus::class)],
         ]);
 
         try {

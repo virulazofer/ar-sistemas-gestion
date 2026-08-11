@@ -4,9 +4,13 @@ namespace App\Http\Controllers\Clients;
 
 use App\Http\Controllers\Controller;
 use App\Models\Client;
+use App\Models\CommercialCharge;
 use App\Models\Document;
 use App\Services\AuditLogger;
+use App\Services\Clients\CcRegularizationService;
+use App\Services\Clients\ClientCodeService;
 use App\Services\Clients\ClientLedgerService;
+use App\Support\Money;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -16,6 +20,8 @@ class ClientController extends Controller
 {
     public function __construct(
         private readonly ClientLedgerService $ledger,
+        private readonly ClientCodeService $codes,
+        private readonly CcRegularizationService $regularization,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -25,14 +31,22 @@ class ClientController extends Controller
 
         $clients = Client::query()
             ->when($q !== '', function ($query) use ($q) {
-                $query->where(function ($inner) use ($q) {
+                $code = ltrim($q, '0');
+                $query->where(function ($inner) use ($q, $code) {
                     $inner->where('name', 'like', "%{$q}%")
                         ->orWhere('business_name', 'like', "%{$q}%")
                         ->orWhere('cuit', 'like', "%{$q}%")
                         ->orWhere('dni', 'like', "%{$q}%")
                         ->orWhere('email', 'like', "%{$q}%");
+                    if ($code !== '' && ctype_digit($code)) {
+                        $inner->orWhere('code', (int) $code);
+                    }
+                    if (ctype_digit($q)) {
+                        $inner->orWhere('code', (int) $q);
+                    }
                 });
             })
+            ->orderBy('code')
             ->orderBy('name')
             ->paginate(20)
             ->withQueryString();
@@ -48,6 +62,9 @@ class ClientController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $data = $this->validated($request);
+        if (empty($data['code'])) {
+            $data['code'] = $this->codes->allocateNext();
+        }
         $client = Client::query()->create($data);
         $this->audit->log('client_created', $client, null, $client->toArray(), 'Cliente creado');
 
@@ -57,14 +74,39 @@ class ClientController extends Controller
     public function show(Client $client): View
     {
         $balances = $this->ledger->balances($client);
-        $entries = $client->ledgerEntries()
-            ->with(['currency', 'financialMovement', 'user'])
-            ->latest('entry_date')
-            ->latest('id')
-            ->paginate(25);
+        $rawEntries = $client->ledgerEntries()
+            ->with(['currency', 'financialMovement', 'user', 'commercialCharge', 'receipt'])
+            ->orderBy('entry_date')
+            ->orderBy('entry_time')
+            ->orderBy('id')
+            ->get();
+
+        $running = ['ARS' => '0.00', 'USD' => '0.00'];
+        $entriesWithBalance = $rawEntries->map(function ($entry) use (&$running) {
+            $code = $entry->currency?->code ?? 'ARS';
+            if ($entry->isPosted()) {
+                $running[$code] = Money::add($running[$code] ?? '0.00', (string) $entry->signed_amount);
+            }
+            $entry->running_balance = $running[$code] ?? '0.00';
+            $entry->running_display = \App\Support\UiSemantics::clientCcDisplayBalance($entry->running_balance);
+
+            return $entry;
+        })->reverse()->values();
+
+        $openCharges = CommercialCharge::query()
+            ->open()
+            ->where('client_id', $client->id)
+            ->orderBy('charged_on')
+            ->get();
+
         $client->load('documents');
 
-        return view('clients.show', compact('client', 'balances', 'entries'));
+        return view('clients.show', [
+            'client' => $client,
+            'balances' => $balances,
+            'entries' => $entriesWithBalance,
+            'openCharges' => $openCharges,
+        ]);
     }
 
     public function edit(Client $client): View
@@ -75,11 +117,43 @@ class ClientController extends Controller
     public function update(Request $request, Client $client): RedirectResponse
     {
         $data = $this->validated($request, $client->id);
+        try {
+            $data['code'] = $this->codes->assertEditable(
+                $client->code,
+                $data['code'] ?? $client->code,
+                $request->user()->can('clients.edit_code')
+            );
+        } catch (\Throwable $e) {
+            return back()->withInput()->withErrors(['code' => $e->getMessage()]);
+        }
         $old = $client->toArray();
         $client->update($data);
         $this->audit->log('client_updated', $client, $old, $client->fresh()->toArray(), 'Cliente actualizado');
 
         return redirect()->route('clients.show', $client)->with('status', 'Cliente actualizado.');
+    }
+
+    public function regularize(Request $request, Client $client): RedirectResponse
+    {
+        $data = $request->validate([
+            'currency_code' => ['required', Rule::in(['ARS', 'USD'])],
+            'amount' => ['required', 'numeric', 'gt:0'],
+            'sign' => ['required', Rule::in(['-1', '1'])],
+            'reason' => ['required', 'string', 'max:1000'],
+            'regularization_kind' => ['required', 'string', 'max:40'],
+            'entry_date' => ['required', 'date'],
+            'description' => ['nullable', 'string', 'max:255'],
+            'related_ledger_entry_id' => ['nullable', 'exists:client_ledger_entries,id'],
+        ]);
+        $data['sign'] = (int) $data['sign'];
+
+        try {
+            $this->regularization->regularize($client, $data);
+        } catch (\Throwable $e) {
+            return back()->withInput()->withErrors(['amount' => $e->getMessage()]);
+        }
+
+        return redirect()->route('clients.show', $client)->with('status', 'Regularización de CC registrada (movimiento auditado).');
     }
 
     public function storeDocument(Request $request, Client $client): RedirectResponse
@@ -116,7 +190,7 @@ class ClientController extends Controller
     {
         $partyType = (string) $request->input('party_type', 'particular');
 
-        return $request->validate([
+        $rules = [
             'name' => ['required', 'string', 'max:180'],
             'party_type' => ['required', Rule::enum(\App\Enums\PartyType::class)],
             'business_name' => [
@@ -145,6 +219,14 @@ class ClientController extends Controller
             'tax_condition' => ['required', Rule::enum(\App\Enums\TaxCondition::class)],
             'status' => ['required', Rule::in(['active', 'inactive'])],
             'notes' => ['nullable', 'string', 'max:5000'],
-        ]);
+        ];
+
+        if ($ignoreId !== null && $request->user()?->can('clients.edit_code')) {
+            $rules['code'] = ['nullable', 'integer', 'min:1', Rule::unique('clients', 'code')->ignore($ignoreId)];
+        } else {
+            $rules['code'] = ['nullable', 'integer', 'min:1'];
+        }
+
+        return $request->validate($rules);
     }
 }

@@ -31,6 +31,10 @@ Movimientos importados pasan por `MovementService::createSimple`.
 
 Duplicados: CUIT/DNI (clientes), SKU (productos), `external_id` (movimientos).
 
+Histórico 11E (preview): semáforo Verde / Amarillo / Rojo / **Pendiente de completar**.  
+Las anotaciones sin fecha e importe 0 no son error ni basura.  
+Feature futura: [Pendientes de carga](stage11e-pendientes-de-carga.md) (fuera de alcance 11E).
+
 ## Búsqueda global
 
 `/buscar` — clientes, proveedores, productos, equipos, OT, presupuestos, ventas.

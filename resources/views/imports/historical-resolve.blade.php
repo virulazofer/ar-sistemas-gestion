@@ -25,6 +25,7 @@
         <div>Verde: <strong>{{ $batch->rows_green }}</strong></div>
         <div>Amarillo: <strong>{{ $batch->rows_yellow }}</strong></div>
         <div>Rojo: <strong>{{ $batch->rows_red }}</strong></div>
+        <div>Pendiente de completar: <strong>{{ $batch->classification_summary['pending_complete'] ?? $batch->preview_payload['summary']['pending_complete'] ?? 0 }}</strong></div>
         <div>Ingresos diff: <strong>{{ number_format((float) ($batch->reconciliation_payload['differences']['ingresos'] ?? 0), 2, ',', '.') }}</strong></div>
         <div>CC IN diff: <strong>{{ number_format((float) ($batch->reconciliation_payload['differences']['cc_in'] ?? 0), 2, ',', '.') }}</strong></div>
         <div>CC OUT diff: <strong>{{ number_format((float) ($batch->reconciliation_payload['differences']['cc_out'] ?? 0), 2, ',', '.') }}</strong></div>

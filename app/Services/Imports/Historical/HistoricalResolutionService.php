@@ -60,12 +60,29 @@ class HistoricalResolutionService
             if (in_array('fecha_sospechosa', $flags, true) || $cause === 'fecha_invalida_sospechosa' || $cause === 'fecha_dudosa') {
                 $dates[] = $this->enrichDateRow($row, $decisions->get('date:'.$sourceRow)?->first());
             }
-            if ($cause === 'operacion_venta_compleja' || in_array('operacion_compleja', $flags, true)) {
+            if ($cause === 'operacion_venta_compleja'
+                || $cause === 'venta_economica_reclasificada'
+                || $cause === 'venta_credito_luego_cancelada'
+                || $cause === 'venta_cobro_desconocido'
+                || $cause === 'cc_omitida_probable'
+                || in_array('venta_economica', $flags, true)
+                || in_array('operacion_compleja', $flags, true)
+            ) {
                 if (($row['amounts']['venta'] ?? 0) > 0 || $cause === 'operacion_venta_compleja') {
                     $complex[] = $this->enrichComplexRow($row, $decisions->get('complex_sale:'.$sourceRow)?->first());
                 }
             }
-            if ($cause === 'pago_tarjeta' || in_array('pago_tarjeta_posible', $flags, true)) {
+            if (in_array($cause, [
+                'pago_tarjeta',
+                'pago_tarjeta_sin_importe',
+                'pago_tarjeta_datos_incompletos',
+            ], true)
+                || in_array('pago_tarjeta_posible', $flags, true)
+                || in_array('pago_tarjeta_sin_importe', $flags, true)
+                || in_array('pago_tarjeta_sin_tarjeta', $flags, true)
+                || in_array('pago_tarjeta_sin_cuenta_pago', $flags, true)
+            ) {
+                // Solo excepciones reales / residuales; pagos_tc confirmados no entran (ya no son yellow).
                 $cards[] = $this->enrichCardRow($row, $decisions->get('card:'.$sourceRow)?->first());
             }
             if ($cause === 'cc_simple_revision') {
@@ -308,15 +325,16 @@ class HistoricalResolutionService
         $a = $row['amounts'] ?? [];
         $proposed = [
             'venta' => (float) ($a['venta'] ?? 0),
-            'cobro' => (float) ($a['ingresos'] ?? 0),
+            'cobro' => (float) ($row['interpretation']['finance_income'] ?? 0),
             'cc_charge' => (float) ($a['cc_in'] ?? 0),
             'cc_payment' => (float) ($a['cc_out'] ?? 0),
             'merca_out' => (float) ($a['merca_out'] ?? 0),
             'merca_in' => (float) ($a['merca_in'] ?? 0),
             'utilidad' => (float) ($a['ut_ventas'] ?? 0),
-            'finance_income' => (float) ($a['ingresos'] ?? 0),
-            'finance_expense' => (float) ($a['egresos'] ?? 0),
-            'notes' => 'Propuesta desde columnas Excel — revisar antes de aprobar.',
+            'finance_income' => (float) ($row['interpretation']['finance_income'] ?? 0),
+            'finance_expense' => 0.0,
+            'notes' => 'Utilidad = Venta - Merca OUT + Merca IN. Utilidad ≠ cobro. No inventar caja.',
+            'sale_kind' => $row['sale_kind'] ?? null,
         ];
 
         return array_merge($row, [
@@ -331,27 +349,40 @@ class HistoricalResolutionService
      */
     private function enrichCardRow(array $row, ?ImportPreviewDecision $decision): array
     {
-        $a = $row['amounts'] ?? [];
-        $cuenta = $row['excel_cuenta_category'] ?? '';
-        $suggested = 'purchase';
-        if (($a['pagos_tc'] ?? 0) > 0 || in_array($cuenta, ['VISA', 'MC', 'MCMP'], true) && ($a['egresos'] ?? 0) <= 0 && ($a['ingresos'] ?? 0) <= 0) {
-            $suggested = 'statement_payment';
-        }
-        if (($a['egresos'] ?? 0) > 0 && in_array($row['excel_subcuenta_account'] ?? '', ['VISA', 'MC', 'MCMP'], true)) {
-            $suggested = 'purchase';
+        $flags = $row['flags'] ?? [];
+        $humanOptions = $row['human_decision_options'] ?? [];
+        if ($humanOptions === []) {
+            if (in_array('pago_tarjeta_sin_importe', $flags, true)) {
+                $humanOptions = [
+                    'Completar importe real del pago de resumen',
+                    'Indicar que el pago está documentado en otra fila',
+                    'Excluir fila',
+                ];
+            } elseif (in_array('pago_tarjeta_sin_tarjeta', $flags, true)
+                || in_array('pago_tarjeta_sin_cuenta_pago', $flags, true)
+            ) {
+                $humanOptions = [];
+                if (in_array('pago_tarjeta_sin_tarjeta', $flags, true)) {
+                    $humanOptions[] = 'Indicar tarjeta del pasivo (VISA / MC / MCMP)';
+                }
+                if (in_array('pago_tarjeta_sin_cuenta_pago', $flags, true)) {
+                    $humanOptions[] = 'Indicar cuenta de pago (Patagonia / MP Fer / FT / otra)';
+                }
+                $humanOptions[] = 'Excluir fila';
+            } else {
+                $humanOptions = ['Compra con tarjeta (gasto+pasivo)', 'Excluir'];
+            }
         }
 
         return array_merge($row, [
-            'suggested_card_kind' => $suggested,
+            // Semántica fija: pagos_tc ya no ofrece Compra vs Pago de resumen.
+            'suggested_card_kind' => 'statement_payment',
             'decision' => $decision?->payload,
+            'human_decision_options' => $humanOptions,
             'before_after' => [
-                'purchase' => [
-                    'would_generate' => ['Gasto/compra', 'Aumento pasivo tarjeta'],
-                    'not_generate' => ['Pago de resumen'],
-                ],
                 'statement_payment' => [
-                    'would_generate' => ['Disminuye banco/efectivo', 'Disminuye pasivo tarjeta'],
-                    'not_generate' => ['Segundo gasto'],
+                    'would_generate' => ['Disminuye banco/efectivo (si cuenta identificada)', 'Disminuye pasivo tarjeta'],
+                    'not_generate' => ['Segundo gasto', 'Modificación del gasto original del consumo'],
                 ],
             ],
         ]);

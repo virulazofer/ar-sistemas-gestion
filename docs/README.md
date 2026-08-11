@@ -17,6 +17,7 @@ Aplicación web de gestión personal y profesional IT.
 - [OT / Abonos](work-orders.md)
 - [Presupuestos / Ventas](sales.md)
 - [Reportes / Importaciones](reports-imports.md)
+- [11E Pendientes de carga (futuro)](stage11e-pendientes-de-carga.md)
 - [Validación MySQL](mysql-validation.md)
 - [Scheduler](scheduler.md)
 - [Permisos](permissions.md)

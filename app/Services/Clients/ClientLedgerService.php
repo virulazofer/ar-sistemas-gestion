@@ -307,6 +307,10 @@ class ClientLedgerService
                 'sale_id' => $data['sale_id'] ?? null,
                 'event_id' => $data['event_id'] ?? null,
                 'document_id' => $data['document_id'] ?? null,
+                'commercial_charge_id' => $data['commercial_charge_id'] ?? null,
+                'receipt_id' => $data['receipt_id'] ?? null,
+                'regularization_kind' => $data['regularization_kind'] ?? null,
+                'related_ledger_entry_id' => $data['related_ledger_entry_id'] ?? null,
             ]);
 
             if (! empty($data['force_fail'])) {

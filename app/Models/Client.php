@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 #[Fillable([
+    'code',
     'name',
     'party_type',
     'business_name',
@@ -63,5 +64,29 @@ class Client extends Model
     public function scopeActive($query)
     {
         return $query->where('status', self::STATUS_ACTIVE);
+    }
+
+    public function codeFormatted(): string
+    {
+        return $this->code ? sprintf('%04d', (int) $this->code) : '—';
+    }
+
+    public function labelWithCode(): string
+    {
+        if (! $this->code) {
+            return $this->name;
+        }
+
+        return $this->codeFormatted().' — '.$this->name;
+    }
+
+    public function commercialCharges(): HasMany
+    {
+        return $this->hasMany(CommercialCharge::class);
+    }
+
+    public function receipts(): HasMany
+    {
+        return $this->hasMany(Receipt::class);
     }
 }

@@ -36,10 +36,23 @@ class HistoricalMappingRuleService
                 'match_key' => 'card_liability_expense',
                 'match_value' => null,
                 'action' => [
-                    'flag' => 'pago_tarjeta_posible',
+                    'flag' => 'compra_tarjeta',
                     'treat_as_liability_expense' => true,
                 ],
-                'notes' => 'Gasto en tarjeta aumenta pasivo; no es transferencia de pago de resumen.',
+                'notes' => 'Compra con tarjeta (egresos en VISA/MC/MCMP): gasto + aumento de pasivo. Distinto del pago de resumen.',
+            ],
+            [
+                'rule_type' => 'interpretation',
+                'match_key' => 'pago_resumen_tarjeta',
+                'match_value' => null,
+                'action' => [
+                    'flag' => 'pago_resumen_tarjeta_confirmado',
+                    'treat_as_statement_payment' => true,
+                    'no_second_expense' => true,
+                    'decrease_card_liability' => true,
+                    'decrease_payment_account' => true,
+                ],
+                'notes' => 'Columna Tarjetas/pagos_tc = pago mensual del resumen al banco (cancelación de pasivo). No es compra ni gasto nuevo.',
             ],
         ];
 

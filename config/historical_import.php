@@ -81,5 +81,7 @@ return [
         'marinkovic' => 'Marinkovic',
         'fba' => 'FBA',
         'guillermo' => 'Guillermo',
+        'cintas' => 'Cintas',
+        'cintas industriales' => 'Cintas',
     ],
 ];
