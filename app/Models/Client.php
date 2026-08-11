@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
     'tax_condition',
     'status',
     'notes',
+    'control_cc_desde',
     'import_batch_id',
     'external_id',
 ])]
@@ -33,6 +34,7 @@ class Client extends Model
     {
         return [
             'party_type' => \App\Enums\PartyType::class,
+            'control_cc_desde' => 'date',
         ];
     }
 

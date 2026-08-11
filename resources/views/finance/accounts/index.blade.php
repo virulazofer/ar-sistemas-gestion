@@ -4,6 +4,11 @@
             <h1 class="text-xl font-semibold">Cuentas financieras</h1>
             <div class="flex flex-wrap items-center gap-2">
                 <x-page-help topic="accounts" />
+                @if ($showInactive)
+                    <a href="{{ route('accounts.index') }}" class="ar-btn ar-btn-secondary text-xs">Solo activas</a>
+                @else
+                    <a href="{{ route('accounts.index', ['inactive' => 1]) }}" class="ar-btn ar-btn-secondary text-xs">Ver inactivas</a>
+                @endif
                 @can('accounts.create')
                     <a href="{{ route('accounts.create') }}" class="ar-btn ar-btn-primary">Nueva cuenta</a>
                 @endcan
@@ -18,17 +23,27 @@
                     <th>Nombre</th>
                     <th>Tipo</th>
                     <th>Moneda</th>
+                    <th>CBU/CVU / Tarjeta</th>
                     <th>Estado</th>
                     <th class="text-right">Saldo</th>
                     <th></th>
                 </tr>
             </thead>
             <tbody>
-                @foreach ($accounts as $account)
+                @forelse ($accounts as $account)
                     <tr>
                         <td>{{ $account->name }}</td>
                         <td>{{ $account->type->label() }}</td>
                         <td>{{ $account->currency->code }}</td>
+                        <td class="text-xs">
+                            @if ($account->type->value === 'credit_card')
+                                {{ $account->card_brand ?: 'Tarjeta' }} ·····{{ $account->card_last4 ?: '????' }}
+                                @if ($account->card_holder)<br>{{ $account->card_holder }}@endif
+                            @else
+                                {{ $account->cbu_cvu ?: '—' }}
+                                @if ($account->cuit)<br>CUIT {{ \App\Rules\Cuit::format($account->cuit) }}@endif
+                            @endif
+                        </td>
                         <td>{{ $account->status }}</td>
                         <td class="text-right">{{ number_format((float) $account->computed_balance, 2, ',', '.') }}</td>
                         <td class="text-right">
@@ -37,9 +52,11 @@
                             @endcan
                         </td>
                     </tr>
-                @endforeach
+                @empty
+                    <tr><td colspan="7" class="ar-muted py-6 text-center">Sin cuentas{{ $showInactive ? '' : ' activas' }}.</td></tr>
+                @endforelse
             </tbody>
         </table>
     </div>
-    <p class="ar-muted mt-3 text-xs">El saldo no es editable: se calcula desde movimientos confirmados.</p>
+    <p class="ar-muted mt-3 text-xs">El saldo no es editable: se calcula desde movimientos confirmados. Las tarjetas no almacenan CVV ni PAN completo.</p>
 </x-app-layout>

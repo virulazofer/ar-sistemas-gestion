@@ -59,6 +59,15 @@ final class Money
         return self::compare($amount, '0') < 0;
     }
 
+    public static function abs(string $amount, int $decimals = 2): string
+    {
+        $normalized = self::normalize($amount, $decimals);
+
+        return self::isNegative($normalized)
+            ? self::mul($normalized, '-1', $decimals)
+            : $normalized;
+    }
+
     /**
      * Formato AR: "$ 1.234.567,89" / "U$S 1.234.567,89". No mezcla monedas.
      */

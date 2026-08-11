@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Support\Appearance;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -13,7 +14,7 @@ class ThemeController extends Controller
 {
     public function __construct(private readonly AuditLogger $audit) {}
 
-    public function update(Request $request): RedirectResponse
+    public function update(Request $request): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
             'theme' => ['required', Rule::in(Appearance::modes())],
@@ -44,6 +45,14 @@ class ThemeController extends Controller
             ],
             'Apariencia actualizada'
         );
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'status' => 'ok',
+                'theme' => $user->theme,
+                'palette' => $user->appearancePalette(),
+            ]);
+        }
 
         return back()->with('status', 'Apariencia actualizada.');
     }

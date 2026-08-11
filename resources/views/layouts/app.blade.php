@@ -227,11 +227,30 @@
                 font-weight: 600;
                 cursor: pointer;
                 color: var(--ar-text);
+                transition: border-color .15s ease, background .15s ease, color .15s ease, box-shadow .15s ease;
+            }
+            .ar-appearance-choice:hover {
+                border-color: var(--ar-brand);
+                background: var(--ar-surface);
+                color: var(--ar-brand);
+            }
+            .ar-appearance-choice:focus,
+            .ar-appearance-choice:focus-visible {
+                outline: 2px solid var(--ar-brand);
+                outline-offset: 2px;
+            }
+            .ar-appearance-choice:not(.is-selected) {
+                opacity: .92;
             }
             .ar-appearance-choice.is-selected {
                 border-color: var(--ar-brand);
                 background: var(--ar-brand-soft);
                 color: var(--ar-brand);
+                opacity: 1;
+                box-shadow: inset 0 0 0 1px var(--ar-brand);
+            }
+            .ar-appearance-choice.is-selected:hover {
+                background: var(--ar-brand-soft);
             }
             .ar-topbar-search-more {
                 width: 100%;

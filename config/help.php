@@ -6,20 +6,10 @@ return [
         'summary' => 'Registro rápido de ingresos y egresos financieros personales o profesionales.',
         'bullets' => [
             'Elegí tipo (ingreso/egreso), cuenta, moneda e importe.',
-            'El sistema congela el equivalente ARS/USD según la cotización vigente.',
+            'El sistema congela el equivalente ARS/USD según la cotización de la fecha del movimiento.',
             'No reemplaza compras, ventas ni ajustes de stock.',
         ],
         'flow' => 'Completar datos → Guardar → El movimiento queda posted y afecta saldos de cuenta.',
-    ],
-    'movements' => [
-        'title' => 'Movimientos',
-        'summary' => 'Historial de ingresos, egresos y transferencias entre cuentas.',
-        'bullets' => [
-            'Filtrá por ámbito, tipo y estado.',
-            'Un movimiento anulado deja de afectar saldos.',
-            'Las transferencias aparecen como par de salida/entrada.',
-        ],
-        'flow' => 'Consultá el listado → abrí el detalle → usá carga rápida para nuevos movimientos.',
     ],
     'dashboard' => [
         'title' => 'Tablero operativo',
@@ -42,11 +32,52 @@ return [
     ],
     'accounts' => [
         'title' => 'Cuentas financieras',
-        'summary' => 'Cajas, bancos y billeteras donde vive el dinero.',
+        'summary' => 'Cajas, bancos, billeteras y tarjetas donde vive el dinero.',
         'bullets' => [
-            'Cada cuenta tiene moneda y tipo (efectivo, banco, billetera u otra).',
+            'Tipos: Efectivo, Banco, Billetera, Tarjeta, Otra.',
+            'CBU/CVU = 22 dígitos; CUIT uniforme. Tarjetas: last4/marca/titular — sin CVV ni PAN.',
+            'Por defecto solo se listan activas; usá «Ver inactivas».',
             'Los saldos se recalculan desde movimientos confirmados.',
         ],
+    ],
+    'categories' => [
+        'title' => 'Categorías financieras',
+        'summary' => 'Clasificación operativa de movimientos (no es una cuenta de dinero).',
+        'bullets' => [
+            'Categoría ≠ cuenta financiera (caja/banco) y ≠ cuenta del plan contable por sí sola.',
+            'Puede asociarse a una cuenta del plan de cuentas.',
+            'En el detalle ves totales, promedio mensual y movimientos del período.',
+        ],
+        'flow' => 'Listado → clic en categoría → filtrá período → profundizá en movimientos.',
+    ],
+    'exchange_rates' => [
+        'title' => 'Cotizaciones',
+        'summary' => 'USD/ARS oficial: vigente (DolarAPI) e histórico (ArgentinaDatos / importación).',
+        'bullets' => [
+            'DolarAPI actualiza la cotización vigente sin borrar el histórico.',
+            'Backfill ArgentinaDatos (oficial/BNA) es idempotente; no inventa fines de semana.',
+            'Los movimientos congelan la cotización de su fecha; no se recalculan en silencio.',
+        ],
+        'flow' => 'Filtrá rango → preview backfill → confirmar → el histórico queda disponible para valuación.',
+    ],
+    'clients_cc_opening' => [
+        'title' => 'Apertura manual de CC',
+        'summary' => 'Saldo inicial auditado (AJUSTE/APERTURA) sin borrar movimientos previos.',
+        'bullets' => [
+            'Saldo positivo (presentación) = nos deben (rojo).',
+            'Opcional: control_cc_desde para acotar el timeline.',
+            'Requiere permiso de regularización.',
+        ],
+    ],
+    'equipment_sale' => [
+        'title' => 'Venta de equipos',
+        'summary' => 'Vender un equipo armado con margen % sobre costo, vía Ventas.',
+        'bullets' => [
+            'Precio sugerido = costo histórico × (1 + margen%).',
+            'No re-consume componentes al vender.',
+            'Detalle en docs/venta-de-equipos.md.',
+        ],
+        'flow' => 'Nueva venta → ítem Equipo → margen → borrador → confirmar.',
     ],
     'clients' => [
         'title' => 'Clientes',
@@ -55,6 +86,7 @@ return [
             'Particular: DNI obligatorio; CUIT opcional.',
             'Empresa: CUIT y razón social obligatorios.',
             'La condición fiscal es un catálogo (sin lógica ARCA todavía).',
+            'Apertura de CC y ajustes quedan auditados.',
         ],
         'flow' => 'Convención CC (presentación): + rojo = nos deben; − verde = a favor del cliente.',
     ],
@@ -64,7 +96,7 @@ return [
         'bullets' => [
             'Saldo positivo (rojo): el cliente nos debe.',
             'Saldo negativo (verde): crédito a favor del cliente.',
-            'Cobros y regularización avanzada se documentan para la etapa 11F-3.',
+            'Cobros, cargos y apertura manual están disponibles según permisos.',
         ],
         'flow' => 'Filtrá → ordená el ranking → abrí la ficha del cliente para el detalle de movimientos.',
     ],
@@ -84,14 +116,6 @@ return [
             'También impacta la cuenta corriente del proveedor según el modo de pago.',
         ],
     ],
-    'products' => [
-        'title' => 'Productos',
-        'summary' => 'Catálogo de ítems físicos o de servicio.',
-        'bullets' => [
-            'Los productos físicos participan del stock FIFO.',
-            'Desde la ficha podés ajustar, reservar, consumir o transferir.',
-        ],
-    ],
     'stock' => [
         'title' => 'Stock',
         'summary' => 'Existencias físicas valorizadas por FIFO histórico.',
@@ -102,15 +126,6 @@ return [
             'Reconstruir solo para usuarios autorizados y con cuidado.',
         ],
         'flow' => 'Sin productos: creá uno en Maestros → Productos. Luego comprá o ajustá desde la ficha.',
-    ],
-    'equipment' => [
-        'title' => 'Equipos',
-        'summary' => 'Equipos armados/serializados y su ciclo de vida.',
-        'bullets' => [
-            'Distinto de un producto genérico de stock.',
-            'Podés armar desde plantillas, ver componentes, seriales y estado.',
-            'Un equipo vendido no vuelve a ofrecerse en presupuestos/ventas.',
-        ],
     ],
     'work_orders' => [
         'title' => 'Órdenes de trabajo',
@@ -137,21 +152,51 @@ return [
             'Equipo a fabricar usa tipo/plantilla, no fabrica automáticamente.',
         ],
     ],
+    'chart_accounts' => [
+        'title' => 'Plan de cuentas',
+        'summary' => 'Jerarquía contable (Activo/Pasivo/…); distinta de categorías y de cajas.',
+        'bullets' => [
+            'Alta/edición con padre, tipo y vista de impacto (“usado por”).',
+            'Mapa interactivo desde la base de datos.',
+            'Documentación: docs/plan-de-cuentas.md.',
+        ],
+    ],
+    'movements' => [
+        'title' => 'Movimientos',
+        'summary' => 'Historial de ingresos, egresos y transferencias entre cuentas.',
+        'bullets' => [
+            'Columnas: Fecha | Categoría | Descripción | Ámbito | Cuenta | Importe.',
+            'Colores semánticos en el importe (sin cambiar signos guardados).',
+            'Un movimiento anulado deja de afectar saldos.',
+        ],
+        'flow' => 'Consultá el listado → abrí el detalle → usá carga rápida para nuevos movimientos.',
+    ],
+    'products' => [
+        'title' => 'Productos',
+        'summary' => 'Catálogo de ítems físicos o de servicio.',
+        'bullets' => [
+            'Columnas: SKU | Familia | Nombre | Stock.',
+            'Sin precio de venta en maestro (se define en documentos comerciales).',
+            'Baja masiva: elimina si no hay relaciones; si hay, archiva.',
+        ],
+    ],
+    'equipment' => [
+        'title' => 'Equipos',
+        'summary' => 'Equipos armados/serializados y su ciclo de vida.',
+        'bullets' => [
+            'Distinto de un producto genérico de stock.',
+            'Podés armar desde plantillas, ver componentes, seriales y estado.',
+            'Un equipo vendido no vuelve a ofrecerse; no re-consume componentes.',
+            'Venta con margen: docs/venta-de-equipos.md.',
+        ],
+    ],
     'sales' => [
         'title' => 'Ventas',
         'summary' => 'Confirmación comercial con impacto en stock, CC y/o caja.',
         'bullets' => [
             'Crédito: baja stock y aumenta deuda del cliente, sin ingreso bancario.',
             'Contado: baja stock e ingresa dinero; la CC no queda con deuda.',
-            'Equipo vendido cambia de estado y no re-consume componentes.',
-        ],
-    ],
-    'chart_accounts' => [
-        'title' => 'Plan de cuentas',
-        'summary' => 'Clasificación contable usada por categorías y reportes.',
-        'bullets' => [
-            'Los tipos internos (income, expense, etc.) se muestran en español en la UI.',
-            'Las categorías financieras pueden asociarse a una cuenta del plan.',
+            'Equipo: margen % sobre costo; no re-consume componentes.',
         ],
     ],
     'reports' => [

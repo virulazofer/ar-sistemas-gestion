@@ -36,28 +36,36 @@
             <thead>
                 <tr>
                     <th>Fecha</th>
-                    <th>Tipo</th>
+                    <th>Categoría</th>
+                    <th>Descripción</th>
                     <th>Ámbito</th>
                     <th>Cuenta</th>
-                    <th>Categoría</th>
                     <th class="text-right">Importe</th>
-                    <th>Estado</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach ($movements as $movement)
+                    @php
+                        $signedDisplay = \App\Support\Money::mul(
+                            (string) $movement->amount,
+                            (string) $movement->type->signedMultiplier()
+                        );
+                        $amountClass = \App\Support\UiSemantics::cssClass($signedDisplay, \App\Support\UiSemantics::MODE_RESULT);
+                    @endphp
                     <tr>
                         <td><a href="{{ route('movements.show', $movement) }}" style="color: var(--ar-brand);">{{ $movement->movement_date?->format('d/m/Y') }}</a></td>
-                        <td>{{ $movement->type->label() }}</td>
+                        <td>{{ $movement->category?->name ?? '—' }}{{ $movement->subcategory ? ' / '.$movement->subcategory->name : '' }}</td>
+                        <td>{{ $movement->description ?: '—' }}</td>
                         <td>{{ $movement->scope->label() }}</td>
                         <td>{{ $movement->account?->name }}</td>
-                        <td>{{ $movement->category?->name }} {{ $movement->subcategory ? '/ '.$movement->subcategory->name : '' }}</td>
-                        <td class="text-right">{{ number_format((float) $movement->amount, 2, ',', '.') }} {{ $movement->account?->currency?->code }}</td>
-                        <td>{{ $movement->status->value }}</td>
+                        <td class="text-right {{ $amountClass }}">
+                            {{ number_format((float) $signedDisplay, 2, ',', '.') }} {{ $movement->account?->currency?->code }}
+                        </td>
                     </tr>
                 @endforeach
             </tbody>
         </table>
     </div>
+    <p class="ar-muted mt-2 text-xs">Colores semánticos solo en presentación (ingreso verde / egreso rojo). El signo almacenado en DB no se modifica.</p>
     <div class="mt-4">{{ $movements->links() }}</div>
 </x-app-layout>

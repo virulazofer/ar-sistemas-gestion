@@ -59,7 +59,8 @@ class MovementService
                 throw new InvalidArgumentException('El importe debe ser mayor a cero.');
             }
 
-            $fx = $this->resolveFxSnapshot($account, $data['exchange_rate_id'] ?? null);
+            $movementDate = $data['movement_date'] ?? now()->toDateString();
+            $fx = $this->resolveFxSnapshot($account, $data['exchange_rate_id'] ?? null, $movementDate);
             $equivalents = $this->equivalents($account->currency->code, $amount, $fx['value']);
 
             $categoryId = $data['category_id'] ?? null;
@@ -68,7 +69,7 @@ class MovementService
 
             $movement = Movement::query()->create([
                 'transfer_id' => null,
-                'movement_date' => $data['movement_date'] ?? now()->toDateString(),
+                'movement_date' => $movementDate,
                 'movement_time' => $data['movement_time'] ?? now()->format('H:i:s'),
                 'user_id' => Auth::id() ?? throw new RuntimeException('Usuario requerido.'),
                 'scope' => MovementScope::from($data['scope']),
@@ -159,10 +160,10 @@ class MovementService
                 throw new InvalidArgumentException('El importe debe ser mayor a cero.');
             }
 
-            $fx = $this->resolveFxSnapshot($from, $data['exchange_rate_id'] ?? null);
+            $date = $data['movement_date'] ?? now()->toDateString();
+            $fx = $this->resolveFxSnapshot($from, $data['exchange_rate_id'] ?? null, $date);
             $equivalents = $this->equivalents($from->currency->code, $amount, $fx['value']);
             $transferId = (string) Str::uuid();
-            $date = $data['movement_date'] ?? now()->toDateString();
             $time = $data['movement_time'] ?? now()->format('H:i:s');
             $scope = MovementScope::from($data['scope']);
             $userId = Auth::id() ?? throw new RuntimeException('Usuario requerido.');
@@ -274,7 +275,7 @@ class MovementService
     /**
      * @return array{id: ?int, value: string, at: \Illuminate\Support\Carbon|string}
      */
-    private function resolveFxSnapshot(FinancialAccount $account, ?int $exchangeRateId): array
+    private function resolveFxSnapshot(FinancialAccount $account, ?int $exchangeRateId, ?string $asOfDate = null): array
     {
         $account->loadMissing('currency');
 
@@ -288,19 +289,22 @@ class MovementService
             ];
         }
 
-        // ARS puro: rate 1 conceptualmente, pero guardamos última USD venta para equivalentes USD
-        try {
-            $latest = $this->rates->latestOfficialSell(trySync: false)['rate'];
-        } catch (Throwable) {
-            // Sin cotización: solo permitido si la cuenta es ARS y no necesitamos USD estricto?
-            // Requerimos cotización siempre para congelar equivalentes.
-            throw new RuntimeException('Se requiere una cotización vigente para registrar el movimiento.');
+        $rate = null;
+        if ($asOfDate) {
+            $rate = $this->rates->rateForDate($asOfDate);
+        }
+        if (! $rate) {
+            try {
+                $rate = $this->rates->latestOfficialSell(trySync: false)['rate'];
+            } catch (Throwable) {
+                throw new RuntimeException('Se requiere una cotización vigente para registrar el movimiento.');
+            }
         }
 
         return [
-            'id' => $latest->id,
-            'value' => Money::normalize($latest->rate, 6),
-            'at' => $latest->rate_at,
+            'id' => $rate->id,
+            'value' => Money::normalize($rate->rate, 6),
+            'at' => $rate->rate_at,
         ];
     }
 

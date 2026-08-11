@@ -3,6 +3,7 @@
 namespace App\Services\Finance;
 
 use App\Contracts\ExchangeRateProvider;
+use App\Integrations\ExchangeRates\ArgentinaDatosHistoricalProvider;
 use App\Models\Currency;
 use App\Models\ExchangeRate;
 use App\Services\AuditLogger;
@@ -23,12 +24,15 @@ class ExchangeRateService
 
     public const PROVIDER_DOLARAPI = 'dolarapi';
 
+    public const PROVIDER_ARGENTINADATOS = 'argentinadatos';
+
     public const PROVIDER_MANUAL = 'manual';
 
     public const PROVIDER_HISTORICAL_IMPORT = 'historical_import';
 
     public function __construct(
         private readonly ExchangeRateProvider $provider,
+        private readonly ArgentinaDatosHistoricalProvider $historicalProvider,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -198,6 +202,165 @@ class ExchangeRateService
             ->orderByDesc('rate_at')
             ->orderByDesc('id')
             ->first();
+    }
+
+    /**
+     * Cotización oficial de venta para una fecha: usa la del día o la última anterior
+     * (fines de semana / feriados = última previa; no inventa valores).
+     * No recalcula ni modifica cotizaciones congeladas en movimientos.
+     */
+    public function rateForDate(Carbon|string $date): ?ExchangeRate
+    {
+        $pair = $this->usdArsIds();
+        if (! $pair) {
+            return null;
+        }
+
+        $day = Carbon::parse($date)->endOfDay();
+
+        return ExchangeRate::query()
+            ->where('base_currency_id', $pair['usd'])
+            ->where('quote_currency_id', $pair['ars'])
+            ->where('rate_type', 'official_sell')
+            ->where('rate_at', '<=', $day)
+            ->orderByDesc('rate_at')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /**
+     * Vista previa de backfill ArgentinaDatos (sin escribir).
+     *
+     * @return array{
+     *   from: string,
+     *   to: string,
+     *   api_rows: int,
+     *   to_import: int,
+     *   already_present: int,
+     *   sample: list<array{fecha: string, compra: ?string, venta: string}>,
+     *   weekend_note: string
+     * }
+     */
+    public function previewArgentinaDatosBackfill(Carbon|string $from, Carbon|string|null $to = null): array
+    {
+        $fromDay = Carbon::parse($from)->startOfDay();
+        $toDay = $to ? Carbon::parse($to)->startOfDay() : now()->startOfDay();
+        if ($toDay->lt($fromDay)) {
+            throw new RuntimeException('El rango de backfill es inválido (hasta < desde).');
+        }
+
+        $rows = $this->historicalProvider->fetchOfficialHistory();
+        $filtered = array_values(array_filter(
+            $rows,
+            fn (array $r) => $r['fecha'] >= $fromDay->toDateString() && $r['fecha'] <= $toDay->toDateString()
+        ));
+
+        $already = 0;
+        $toImport = 0;
+        foreach ($filtered as $row) {
+            $sell = Money::normalize($row['venta'], 6);
+            $buy = $row['compra'] !== null ? Money::normalize($row['compra'], 6) : null;
+            $dup = $this->findDuplicate(
+                provider: self::PROVIDER_ARGENTINADATOS,
+                rateAt: Carbon::parse($row['fecha'])->startOfDay(),
+                sell: $sell,
+                buy: $buy,
+                source: self::SOURCE_HISTORICAL_IMPORT,
+                matchByDay: true,
+            );
+            if ($dup || $this->hasAnyOfficialOnDay($row['fecha'])) {
+                $already++;
+            } else {
+                $toImport++;
+            }
+        }
+
+        return [
+            'from' => $fromDay->toDateString(),
+            'to' => $toDay->toDateString(),
+            'api_rows' => count($filtered),
+            'to_import' => $toImport,
+            'already_present' => $already,
+            'sample' => array_slice($filtered, 0, 5),
+            'weekend_note' => 'Fines de semana/feriados sin cotización API no se inventan; rateForDate usa la última previa.',
+        ];
+    }
+
+    /**
+     * Backfill idempotente desde ArgentinaDatos. No sobrescribe filas existentes
+     * ni recalcula movimientos con FX congelado.
+     *
+     * @return array{imported: int, skipped: int, from: string, to: string}
+     */
+    public function backfillFromArgentinaDatos(Carbon|string $from, Carbon|string|null $to = null, ?int $createdBy = null): array
+    {
+        $preview = $this->previewArgentinaDatosBackfill($from, $to);
+        $rows = $this->historicalProvider->fetchOfficialHistory();
+        $filtered = array_values(array_filter(
+            $rows,
+            fn (array $r) => $r['fecha'] >= $preview['from'] && $r['fecha'] <= $preview['to']
+        ));
+
+        $imported = 0;
+        $skipped = 0;
+
+        foreach ($filtered as $row) {
+            $sell = Money::normalize($row['venta'], 6);
+            $buy = $row['compra'] !== null ? Money::normalize($row['compra'], 6) : null;
+            $rateAt = Carbon::parse($row['fecha'])->startOfDay();
+
+            if ($this->hasAnyOfficialOnDay($row['fecha'])) {
+                $skipped++;
+                continue;
+            }
+
+            $existing = $this->findDuplicate(
+                provider: self::PROVIDER_ARGENTINADATOS,
+                rateAt: $rateAt,
+                sell: $sell,
+                buy: $buy,
+                source: self::SOURCE_HISTORICAL_IMPORT,
+                matchByDay: true,
+            );
+            if ($existing) {
+                $skipped++;
+                continue;
+            }
+
+            $this->storeOfficialSell(
+                rate: $sell,
+                rateBuy: $buy,
+                rateAt: $rateAt->toIso8601String(),
+                source: self::SOURCE_HISTORICAL_IMPORT,
+                provider: self::PROVIDER_ARGENTINADATOS,
+                payload: ['casa' => 'oficial', 'fecha' => $row['fecha'], 'source' => 'argentinadatos'],
+                notes: 'Backfill ArgentinaDatos oficial/BNA',
+                createdBy: $createdBy ?? Auth::id(),
+            );
+            $imported++;
+        }
+
+        return [
+            'imported' => $imported,
+            'skipped' => $skipped,
+            'from' => $preview['from'],
+            'to' => $preview['to'],
+        ];
+    }
+
+    private function hasAnyOfficialOnDay(string $date): bool
+    {
+        $pair = $this->usdArsIds();
+        if (! $pair) {
+            return false;
+        }
+
+        return ExchangeRate::query()
+            ->where('base_currency_id', $pair['usd'])
+            ->where('quote_currency_id', $pair['ars'])
+            ->where('rate_type', 'official_sell')
+            ->whereDate('rate_at', $date)
+            ->exists();
     }
 
     /**

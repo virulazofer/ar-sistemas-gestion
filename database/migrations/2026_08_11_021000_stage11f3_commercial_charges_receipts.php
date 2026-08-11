@@ -78,7 +78,7 @@ return new class extends Migration
             $table->decimal('amount', 18, 2);
             $table->decimal('amount_applied', 18, 2)->default(0);
             $table->decimal('amount_on_account', 18, 2)->default(0);
-            $table->foreignId('financial_account_id')->constrained('financial_accounts')->restrictOnDelete();
+            $table->foreignId('financial_account_id')->nullable()->constrained('financial_accounts')->nullOnDelete();
             $table->foreignId('financial_movement_id')->nullable()->constrained('movements')->nullOnDelete();
             $table->foreignId('client_ledger_entry_id')->nullable()->constrained('client_ledger_entries')->nullOnDelete();
             $table->string('application_mode', 20)->default('auto'); // auto|manual

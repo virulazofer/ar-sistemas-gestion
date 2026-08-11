@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Finance;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\ChartAccount;
+use App\Models\Movement;
 use App\Models\Subcategory;
 use App\Services\AuditLogger;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -27,6 +30,64 @@ class CategoryController extends Controller
         $chartAccounts = ChartAccount::query()->orderBy('code')->get();
 
         return view('finance.categories.index', compact('categories', 'chartAccounts'));
+    }
+
+    public function show(Request $request, Category $category): View
+    {
+        $category->load(['subcategories', 'chartAccount']);
+        $from = $request->filled('from') ? Carbon::parse($request->string('from'))->startOfDay() : now()->startOfMonth();
+        $to = $request->filled('to') ? Carbon::parse($request->string('to'))->endOfDay() : now()->endOfDay();
+
+        $movements = Movement::query()
+            ->with(['account.currency'])
+            ->where('category_id', $category->id)
+            ->posted()
+            ->whereDate('movement_date', '>=', $from->toDateString())
+            ->whereDate('movement_date', '<=', $to->toDateString())
+            ->orderByDesc('movement_date')
+            ->orderByDesc('id')
+            ->paginate(30)
+            ->withQueryString();
+
+        $totals = Movement::query()
+            ->where('category_id', $category->id)
+            ->posted()
+            ->whereDate('movement_date', '>=', $from->toDateString())
+            ->whereDate('movement_date', '<=', $to->toDateString())
+            ->selectRaw('type, SUM(amount_ars) as total_ars, SUM(amount_usd) as total_usd, COUNT(*) as cnt')
+            ->groupBy('type')
+            ->get()
+            ->keyBy(fn ($row) => $row->type instanceof \BackedEnum ? $row->type->value : (string) $row->getRawOriginal('type'));
+
+        $driver = DB::getDriverName();
+        $monthExpr = $driver === 'sqlite'
+            ? "strftime('%Y-%m', movement_date)"
+            : "DATE_FORMAT(movement_date, '%Y-%m')";
+
+        $monthly = Movement::query()
+            ->where('category_id', $category->id)
+            ->posted()
+            ->whereDate('movement_date', '>=', $from->toDateString())
+            ->whereDate('movement_date', '<=', $to->toDateString())
+            ->selectRaw("{$monthExpr} as ym, SUM(amount_ars) as total_ars, COUNT(*) as cnt")
+            ->groupBy('ym')
+            ->orderBy('ym')
+            ->get();
+
+        $monthsCount = max(1, $monthly->count());
+        $sumArs = (float) $monthly->sum('total_ars');
+        $avgArs = $sumArs / $monthsCount;
+
+        return view('finance.categories.show', compact(
+            'category',
+            'movements',
+            'totals',
+            'monthly',
+            'from',
+            'to',
+            'avgArs',
+            'sumArs',
+        ));
     }
 
     public function store(Request $request): RedirectResponse

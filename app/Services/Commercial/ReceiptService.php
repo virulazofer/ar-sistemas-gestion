@@ -7,6 +7,7 @@ use App\Enums\CommercialChargeType;
 use App\Enums\DocumentalStatus;
 use App\Enums\ReceiptStatus;
 use App\Models\Client;
+use App\Models\ClientLedgerEntry;
 use App\Models\CommercialCharge;
 use App\Models\FinancialAccount;
 use App\Models\Receipt;
@@ -232,6 +233,145 @@ class ReceiptService
             ], 'Cobro registrado');
 
             return ['receipt' => $receipt->fresh(['applications.charge', 'financialAccount', 'client'])];
+        });
+    }
+
+    /**
+     * Enlaza un cobro histórico ya existente (movimiento y/o ledger Payment)
+     * a un cargo, sin crear un segundo ingreso financiero.
+     *
+     * @param  array{
+     *   client_id: int,
+     *   amount: string|float|int,
+     *   received_on: string,
+     *   concept: string,
+     *   notes?: string|null,
+     *   financial_account_id?: int|null,
+     *   financial_movement_id?: int|null,
+     *   client_ledger_entry_id?: int|null,
+     *   create_ledger_payment?: bool,
+     *   applications: list<array{commercial_charge_id: int, amount: string|float|int}>,
+     *   documental_status?: string
+     * }  $data
+     */
+    public function attachHistorical(array $data): Receipt
+    {
+        return DB::transaction(function () use ($data) {
+            $client = Client::query()->lockForUpdate()->findOrFail($data['client_id']);
+            $amount = Money::normalize($data['amount']);
+            if (! Money::isPositive($amount)) {
+                throw new InvalidArgumentException('El importe del cobro histórico debe ser mayor a cero.');
+            }
+
+            $currency = 'ARS';
+            if (! empty($data['financial_account_id'])) {
+                $account = FinancialAccount::query()->with('currency')->findOrFail($data['financial_account_id']);
+                $currency = $account->currency->code;
+            }
+
+            $ledgerEntryId = $data['client_ledger_entry_id'] ?? null;
+            $movementId = $data['financial_movement_id'] ?? null;
+
+            if (! empty($data['create_ledger_payment'])) {
+                $entry = $this->ledger->createEntry(
+                    $client,
+                    ClientLedgerType::Payment,
+                    [
+                        'currency_code' => $currency,
+                        'amount' => $amount,
+                        'entry_date' => $data['received_on'],
+                        'description' => $data['concept'],
+                        'financial_movement_id' => $movementId,
+                    ],
+                    sign: 1,
+                    requiresFinance: false,
+                    wrapTransaction: false,
+                );
+                $ledgerEntryId = $entry->id;
+            }
+
+            if (! $ledgerEntryId) {
+                throw new InvalidArgumentException('Cobro histórico requiere ledger payment existente o create_ledger_payment.');
+            }
+
+            $applications = [];
+            $appliedTotal = '0.00';
+            foreach ($data['applications'] as $app) {
+                $appAmount = Money::normalize($app['amount']);
+                $applications[] = [
+                    'commercial_charge_id' => (int) $app['commercial_charge_id'],
+                    'amount' => $appAmount,
+                ];
+                $appliedTotal = Money::add($appliedTotal, $appAmount);
+            }
+
+            if (Money::compare($appliedTotal, $amount) > 0) {
+                throw new InvalidArgumentException('Las aplicaciones históricas superan el importe del cobro.');
+            }
+
+            $seq = (int) Setting::getValue('receipts.next_sequence', 1);
+            $number = sprintf('RC-%06d', $seq);
+            Setting::setValue('receipts.next_sequence', $seq + 1, 'int');
+
+            $receipt = Receipt::query()->create([
+                'number' => $number,
+                'sequence' => $seq,
+                'client_id' => $client->id,
+                'received_on' => $data['received_on'],
+                'currency_code' => $currency,
+                'amount' => $amount,
+                'amount_applied' => $appliedTotal,
+                'amount_on_account' => Money::sub($amount, $appliedTotal),
+                'financial_account_id' => $data['financial_account_id'] ?? null,
+                'financial_movement_id' => $movementId,
+                'client_ledger_entry_id' => $ledgerEntryId,
+                'application_mode' => 'manual',
+                'insufficient_option' => null,
+                'concept' => $data['concept'],
+                'notes' => $data['notes'] ?? null,
+                'status' => ReceiptStatus::Posted,
+                'documental_status' => DocumentalStatus::tryFrom((string) ($data['documental_status'] ?? DocumentalStatus::NotRequired->value))
+                    ?? DocumentalStatus::NotRequired,
+                'user_id' => Auth::id() ?? throw new RuntimeException('Usuario requerido.'),
+            ]);
+
+            ClientLedgerEntry::query()->where('id', $ledgerEntryId)->update([
+                'receipt_id' => $receipt->id,
+            ]);
+
+            foreach ($applications as $app) {
+                $charge = CommercialCharge::query()->lockForUpdate()->findOrFail($app['commercial_charge_id']);
+                if ($charge->client_id !== $client->id) {
+                    throw new InvalidArgumentException('Cargo inválido para cobro histórico.');
+                }
+                if (! $charge->isOpen()) {
+                    throw new InvalidArgumentException('El cargo '.$charge->number.' no está abierto.');
+                }
+                if (Money::compare($app['amount'], (string) $charge->amount_open) > 0) {
+                    throw new InvalidArgumentException('Aplicación supera saldo abierto de '.$charge->number);
+                }
+
+                ReceiptApplication::query()->create([
+                    'receipt_id' => $receipt->id,
+                    'commercial_charge_id' => $charge->id,
+                    'amount' => $app['amount'],
+                    'status' => ReceiptStatus::Posted,
+                    'user_id' => Auth::id(),
+                ]);
+
+                $this->charges->registerApplicationAmount($charge, $app['amount']);
+            }
+
+            $this->audit->log('receipt_historical_attached', $receipt, null, [
+                'number' => $number,
+                'client_id' => $client->id,
+                'amount' => $amount,
+                'movement_id' => $movementId,
+                'ledger_id' => $ledgerEntryId,
+                'no_new_finance' => true,
+            ], 'Cobro histórico enlazado sin nuevo ingreso');
+
+            return $receipt->fresh(['applications.charge', 'financialAccount', 'client']);
         });
     }
 

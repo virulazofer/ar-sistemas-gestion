@@ -50,7 +50,8 @@
                     @can('clients.view')<a href="{{ route('clients.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('clients.index') || request()->routeIs('clients.create') || request()->routeIs('clients.show') || request()->routeIs('clients.edit') || request()->routeIs('clients.current-accounts') ? 'is-active' : '' }}"><span class="ar-side-label">Clientes</span></a>@endcan
                     @can('suppliers.view')<a href="{{ route('suppliers.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('suppliers.*') ? 'is-active' : '' }}"><span class="ar-side-label">Proveedores</span></a>@endcan
                     @can('categories.view')<a href="{{ route('categories.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('categories.*') || request()->routeIs('subcategories.*') ? 'is-active' : '' }}"><span class="ar-side-label">Categorías financieras</span></a>@endcan
-                    @can('reports.view')<a href="{{ route('reports.show', 'chart-accounts') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('reports.show') && request()->route('type') === 'chart-accounts' ? 'is-active' : '' }}"><span class="ar-side-label">Plan de cuentas</span></a>@endcan
+                    @can('categories.view')<a href="{{ route('chart-accounts.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('chart-accounts.*') ? 'is-active' : '' }}"><span class="ar-side-label">Plan de cuentas</span></a>@endcan
+                    @can('reports.view')<a href="{{ route('reports.show', 'chart-accounts') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('reports.show') && request()->route('type') === 'chart-accounts' ? 'is-active' : '' }}"><span class="ar-side-label">Reporte plan de cuentas</span></a>@endcan
                 </div>
             </div>
         @endcanany

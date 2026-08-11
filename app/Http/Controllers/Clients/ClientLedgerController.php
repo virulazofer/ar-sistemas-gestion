@@ -114,6 +114,37 @@ class ClientLedgerController extends Controller
         return redirect()->route('clients.show', $client)->with('status', 'Ajuste registrado.');
     }
 
+    public function createOpening(Client $client): View
+    {
+        return view('clients.ledger.opening', compact('client'));
+    }
+
+    public function storeOpening(Request $request, Client $client): RedirectResponse
+    {
+        $data = $request->validate([
+            'currency_code' => ['required', Rule::in(['ARS', 'USD'])],
+            'balance' => ['required', 'numeric', 'not_in:0'],
+            'reason' => ['required', 'string', 'max:1000'],
+            'entry_date' => ['required', 'date'],
+            'description' => ['nullable', 'string', 'max:255'],
+            'set_control_desde' => ['nullable', 'boolean'],
+            'control_cc_desde' => ['nullable', 'date'],
+        ]);
+
+        $data['set_control_desde'] = $request->boolean('set_control_desde');
+
+        try {
+            $this->ledger->registerOpeningBalance($client, $data);
+            if ($request->filled('control_cc_desde') && ! $data['set_control_desde']) {
+                $client->update(['control_cc_desde' => $data['control_cc_desde']]);
+            }
+        } catch (\Throwable $e) {
+            return back()->withInput()->withErrors(['balance' => $e->getMessage()]);
+        }
+
+        return redirect()->route('clients.show', $client)->with('status', 'Apertura de CC registrada (AJUSTE/APERTURA).');
+    }
+
     public function applyCredit(Request $request, Client $client): RedirectResponse
     {
         $data = $request->validate([

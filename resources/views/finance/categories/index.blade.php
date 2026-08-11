@@ -1,8 +1,10 @@
 <x-app-layout>
     <x-slot name="header">
         <div class="flex flex-wrap items-center justify-between gap-3">
-            <h1 class="text-xl font-semibold">Categorías y subcategorías</h1>
-            <x-page-help topic="chart_accounts" />
+            <div class="flex items-center gap-2">
+                <h1 class="text-xl font-semibold">Categorías y subcategorías</h1>
+                <x-page-help topic="categories" />
+            </div>
         </div>
     </x-slot>
 
@@ -49,7 +51,10 @@
     <div class="space-y-4">
         @foreach ($categories as $category)
             <div class="ar-card p-4">
-                <h2 class="font-semibold">{{ $category->name }} <span class="ar-muted text-sm">({{ match($category->scope) { 'personal' => 'Personal', 'professional' => 'Profesional', 'both' => 'Ambos', default => $category->scope } }})</span></h2>
+                <h2 class="font-semibold">
+                    <a href="{{ route('categories.show', $category) }}" style="color: var(--ar-brand);">{{ $category->name }}</a>
+                    <span class="ar-muted text-sm">({{ match($category->scope) { 'personal' => 'Personal', 'professional' => 'Profesional', 'both' => 'Ambos', default => $category->scope } }})</span>
+                </h2>
                 <p class="ar-muted text-xs">Plan: {{ $category->chartAccount?->code }} {{ $category->chartAccount?->name }}@if($category->chartAccount) ({{ $category->chartAccount->typeLabel() }})@endif</p>
                 <ul class="mt-2 list-disc ps-5 text-sm">
                     @forelse ($category->subcategories as $sub)

@@ -99,6 +99,20 @@ class ProductController extends Controller
         return redirect()->route('products.show', $product)->with('status', 'Producto actualizado.');
     }
 
+    public function bulkDestroy(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', 'exists:products,id'],
+        ]);
+
+        $result = $this->products->bulkDeleteOrArchive($data['ids']);
+
+        return redirect()
+            ->route('products.index')
+            ->with('status', "Productos: {$result['deleted']} eliminados, {$result['archived']} archivados (con relaciones), {$result['skipped']} omitidos.");
+    }
+
     private function formData(): array
     {
         return [

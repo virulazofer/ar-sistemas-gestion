@@ -41,7 +41,9 @@ class ExchangeRateController extends Controller
             'from',
             'to',
             'chartPoints',
-        ));
+        ) + [
+            'backfillPreview' => session('exchange_rate_backfill_preview'),
+        ]);
     }
 
     public function storeManual(Request $request): RedirectResponse
@@ -114,5 +116,55 @@ class ExchangeRateController extends Controller
         return redirect()
             ->route('exchange-rates.index')
             ->with('status', "Importación histórica: {$result['imported']} altas, {$result['skipped']} omitidas.");
+    }
+
+    public function backfillPreview(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'from' => ['required', 'date'],
+            'to' => ['nullable', 'date', 'after_or_equal:from'],
+        ]);
+
+        try {
+            $preview = $this->rates->previewArgentinaDatosBackfill(
+                $data['from'],
+                $data['to'] ?? null,
+            );
+            session(['exchange_rate_backfill_preview' => $preview]);
+
+            return redirect()
+                ->route('exchange-rates.index', [
+                    'from' => $preview['from'],
+                    'to' => $preview['to'],
+                ])
+                ->with('status', "Preview backfill: {$preview['to_import']} a importar, {$preview['already_present']} ya presentes ({$preview['api_rows']} filas API).");
+        } catch (\Throwable $e) {
+            return redirect()
+                ->route('exchange-rates.index')
+                ->withErrors(['backfill' => $e->getMessage()]);
+        }
+    }
+
+    public function backfillConfirm(Request $request): RedirectResponse
+    {
+        $preview = session('exchange_rate_backfill_preview');
+        if (! is_array($preview)) {
+            return redirect()
+                ->route('exchange-rates.index')
+                ->withErrors(['backfill' => 'Generá primero la vista previa del backfill.']);
+        }
+
+        try {
+            $result = $this->rates->backfillFromArgentinaDatos($preview['from'], $preview['to']);
+            session()->forget('exchange_rate_backfill_preview');
+
+            return redirect()
+                ->route('exchange-rates.index', ['from' => $result['from'], 'to' => $result['to']])
+                ->with('status', "Backfill ArgentinaDatos: {$result['imported']} altas, {$result['skipped']} omitidas.");
+        } catch (\Throwable $e) {
+            return redirect()
+                ->route('exchange-rates.index')
+                ->withErrors(['backfill' => $e->getMessage()]);
+        }
     }
 }

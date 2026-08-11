@@ -9,6 +9,12 @@
                 @can('clients.edit')
                     <a href="{{ route('clients.edit', $client) }}" class="ar-btn ar-btn-secondary">Editar</a>
                 @endcan
+                @can('clients.regularize')
+                    <a href="{{ route('clients.ledger.opening.create', $client) }}" class="ar-btn ar-btn-secondary">Apertura CC</a>
+                @endcan
+                @can('clients.create')
+                    <a href="{{ route('clients.ledger.adjustment.create', $client) }}" class="ar-btn ar-btn-secondary">Ajuste</a>
+                @endcan
                 @can('charges.create')
                     <a href="{{ route('charges.create', ['client_id' => $client->id]) }}" class="ar-btn ar-btn-secondary">Nuevo cargo</a>
                 @endcan
@@ -44,6 +50,7 @@
             <p><span class="ar-muted">Código:</span> {{ $client->codeFormatted() }} · <span class="ar-muted">CUIT:</span> {{ $client->cuit ?: '—' }} · <span class="ar-muted">DNI:</span> {{ $client->dni ?: '—' }}</p>
             <p><span class="ar-muted">Tel:</span> {{ $client->phone ?: '—' }} · <span class="ar-muted">Email:</span> {{ $client->email ?: '—' }}</p>
             <p><span class="ar-muted">Dirección:</span> {{ $client->address ?: '—' }}</p>
+            <p><span class="ar-muted">Control CC desde:</span> {{ $client->control_cc_desde?->format('d/m/Y') ?: '—' }}</p>
             @if ($client->notes)
                 <p class="ar-muted">{{ $client->notes }}</p>
             @endif
@@ -124,7 +131,17 @@
     @endcan
 
     <div class="ar-card overflow-x-auto">
-        <h2 class="border-b px-4 py-3 font-semibold" style="border-color: var(--ar-border);">Detalle cronológico de cuenta corriente</h2>
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3" style="border-color: var(--ar-border);">
+            <h2 class="font-semibold">Detalle cronológico de cuenta corriente</h2>
+            <p class="ar-muted text-sm">{{ $timelineTotal }} movimientos</p>
+        </div>
+        <div class="flex flex-wrap gap-2 border-b px-4 py-2" style="border-color: var(--ar-border);">
+            @foreach ($ccFilters as $key => $label)
+                <a href="{{ route('clients.show', ['client' => $client, 'cc_filter' => $key]) }}"
+                   class="ar-btn {{ $ccFilter === $key ? 'ar-btn-primary' : 'ar-btn-secondary' }}"
+                   style="padding: .25rem .75rem; font-size: .85rem;">{{ $label }}</a>
+            @endforeach
+        </div>
         <table class="ar-table">
             <thead>
                 <tr>
@@ -139,24 +156,42 @@
                 </tr>
             </thead>
             <tbody>
-                @forelse ($entries as $entry)
+                @forelse ($timeline as $row)
                     @php
-                        $tone = \App\Support\UiSemantics::kpiClass($entry->running_display, \App\Support\UiSemantics::MODE_CLIENT_CC);
+                        $tone = $row['running_display'] !== null
+                            ? \App\Support\UiSemantics::kpiClass($row['running_display'], \App\Support\UiSemantics::MODE_CLIENT_CC)
+                            : 'ar-muted';
                     @endphp
                     <tr>
-                        <td>{{ $entry->entry_date?->format('d/m/Y') }}</td>
-                        <td>{{ $entry->type->label() }}</td>
-                        <td>{{ $entry->originLabel() }}</td>
-                        <td>{{ $entry->description }}</td>
-                        <td>{{ $entry->currency->code }}</td>
-                        <td class="text-right">{{ number_format((float) $entry->amount, 2, ',', '.') }}</td>
-                        <td class="text-right {{ $tone }}">{{ number_format((float) $entry->running_display, 2, ',', '.') }}</td>
-                        <td>{{ $entry->status->value }}</td>
+                        <td>{{ $row['date']?->format('d/m/Y') }}</td>
+                        <td>{{ $row['type_label'] }}</td>
+                        <td>{{ $row['origin_label'] }}</td>
+                        <td>
+                            {{ $row['description'] }}
+                            @if (! ($row['affects_cc'] ?? true))
+                                <span class="ar-muted text-xs block">Sin efecto CC adicional (ya contabilizado o cobro histórico relacionado)</span>
+                            @endif
+                        </td>
+                        <td>{{ $row['currency'] }}</td>
+                        <td class="text-right">{{ number_format((float) $row['amount'], 2, ',', '.') }}</td>
+                        <td class="text-right {{ $tone }}">
+                            @if ($row['running_display'] !== null)
+                                {{ number_format((float) $row['running_display'], 2, ',', '.') }}
+                            @else
+                                —
+                            @endif
+                        </td>
+                        <td>{{ $row['status'] }}</td>
                     </tr>
                 @empty
                     <tr><td colspan="8" class="ar-muted py-6 text-center">Sin movimientos.</td></tr>
                 @endforelse
             </tbody>
         </table>
+        @if ($timeline->hasPages())
+            <div class="border-t px-4 py-3" style="border-color: var(--ar-border);">
+                {{ $timeline->links() }}
+            </div>
+        @endif
     </div>
 </x-app-layout>

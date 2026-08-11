@@ -25,6 +25,7 @@ use App\Http\Controllers\Suppliers\SupplierLedgerController;
 use App\Http\Controllers\WorkOrders\WorkOrderController;
 use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\Finance\CategoryController;
+use App\Http\Controllers\Finance\ChartAccountController;
 use App\Http\Controllers\Finance\DashboardController;
 use App\Http\Controllers\Finance\ExchangeRateController;
 use App\Http\Controllers\Finance\FinancialAccountController;
@@ -145,6 +146,8 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/cotizaciones/importar', [ExchangeRateController::class, 'importForm'])->name('exchange-rates.import');
         Route::post('/cotizaciones/importar/preview', [ExchangeRateController::class, 'importPreview'])->name('exchange-rates.import.preview');
         Route::post('/cotizaciones/importar/confirmar', [ExchangeRateController::class, 'importConfirm'])->name('exchange-rates.import.confirm');
+        Route::post('/cotizaciones/backfill/preview', [ExchangeRateController::class, 'backfillPreview'])->name('exchange-rates.backfill.preview');
+        Route::post('/cotizaciones/backfill/confirmar', [ExchangeRateController::class, 'backfillConfirm'])->name('exchange-rates.backfill.confirm');
     });
 
     // Clientes + CC
@@ -171,6 +174,10 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/clientes/{client}/ajuste', [ClientLedgerController::class, 'createAdjustment'])->name('clients.ledger.adjustment.create');
         Route::post('/clientes/{client}/ajuste', [ClientLedgerController::class, 'storeAdjustment'])->name('clients.ledger.adjustment.store');
         Route::post('/clientes/{client}/aplicar-credito', [ClientLedgerController::class, 'applyCredit'])->name('clients.ledger.credit.apply');
+    });
+    Route::middleware('permission:clients.regularize')->group(function () {
+        Route::get('/clientes/{client}/apertura-cc', [ClientLedgerController::class, 'createOpening'])->name('clients.ledger.opening.create');
+        Route::post('/clientes/{client}/apertura-cc', [ClientLedgerController::class, 'storeOpening'])->name('clients.ledger.opening.store');
     });
     Route::middleware('permission:clients.edit')->group(function () {
         Route::get('/clientes/{client}/editar', [ClientController::class, 'edit'])->name('clients.edit');
@@ -234,6 +241,9 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/productos', [ProductController::class, 'index'])
         ->middleware('permission:products.view')
         ->name('products.index');
+    Route::post('/productos/bulk-destroy', [ProductController::class, 'bulkDestroy'])
+        ->middleware('permission:products.void')
+        ->name('products.bulk-destroy');
     Route::middleware('permission:products.create')->group(function () {
         Route::get('/productos/crear', [ProductController::class, 'create'])->name('products.create');
         Route::post('/productos', [ProductController::class, 'store'])->name('products.store');
@@ -457,12 +467,28 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/categorias', [CategoryController::class, 'index'])
         ->middleware('permission:categories.view')
         ->name('categories.index');
+    Route::get('/categorias/{category}', [CategoryController::class, 'show'])
+        ->middleware('permission:categories.view')
+        ->name('categories.show');
     Route::post('/categorias', [CategoryController::class, 'store'])
         ->middleware('permission:categories.create')
         ->name('categories.store');
     Route::post('/subcategorias', [CategoryController::class, 'storeSubcategory'])
         ->middleware('permission:categories.create')
         ->name('subcategories.store');
+
+    Route::middleware('permission:categories.view')->group(function () {
+        Route::get('/plan-de-cuentas', [ChartAccountController::class, 'index'])->name('chart-accounts.index');
+        Route::get('/plan-de-cuentas/mapa', [ChartAccountController::class, 'map'])->name('chart-accounts.map');
+    });
+    Route::middleware('permission:categories.create')->group(function () {
+        Route::get('/plan-de-cuentas/crear', [ChartAccountController::class, 'create'])->name('chart-accounts.create');
+        Route::post('/plan-de-cuentas', [ChartAccountController::class, 'store'])->name('chart-accounts.store');
+    });
+    Route::middleware('permission:categories.edit')->group(function () {
+        Route::get('/plan-de-cuentas/{chart_account}/editar', [ChartAccountController::class, 'edit'])->name('chart-accounts.edit');
+        Route::put('/plan-de-cuentas/{chart_account}', [ChartAccountController::class, 'update'])->name('chart-accounts.update');
+    });
 
     Route::middleware('permission:users.create')->group(function () {
         Route::get('/users/create', [UserController::class, 'create'])->name('users.create');

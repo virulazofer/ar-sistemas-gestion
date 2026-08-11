@@ -8,9 +8,9 @@ use App\Models\CommercialCharge;
 use App\Models\Document;
 use App\Services\AuditLogger;
 use App\Services\Clients\CcRegularizationService;
+use App\Services\Clients\ClientCcTimelineService;
 use App\Services\Clients\ClientCodeService;
 use App\Services\Clients\ClientLedgerService;
-use App\Support\Money;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -22,6 +22,7 @@ class ClientController extends Controller
         private readonly ClientLedgerService $ledger,
         private readonly ClientCodeService $codes,
         private readonly CcRegularizationService $regularization,
+        private readonly ClientCcTimelineService $timeline,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -71,27 +72,12 @@ class ClientController extends Controller
         return redirect()->route('clients.show', $client)->with('status', 'Cliente creado.');
     }
 
-    public function show(Client $client): View
+    public function show(Client $client, Request $request): View
     {
         $balances = $this->ledger->balances($client);
-        $rawEntries = $client->ledgerEntries()
-            ->with(['currency', 'financialMovement', 'user', 'commercialCharge', 'receipt'])
-            ->orderBy('entry_date')
-            ->orderBy('entry_time')
-            ->orderBy('id')
-            ->get();
 
-        $running = ['ARS' => '0.00', 'USD' => '0.00'];
-        $entriesWithBalance = $rawEntries->map(function ($entry) use (&$running) {
-            $code = $entry->currency?->code ?? 'ARS';
-            if ($entry->isPosted()) {
-                $running[$code] = Money::add($running[$code] ?? '0.00', (string) $entry->signed_amount);
-            }
-            $entry->running_balance = $running[$code] ?? '0.00';
-            $entry->running_display = \App\Support\UiSemantics::clientCcDisplayBalance($entry->running_balance);
-
-            return $entry;
-        })->reverse()->values();
+        $filter = (string) $request->get('cc_filter', ClientCcTimelineService::FILTER_ALL);
+        $timeline = $this->timeline->paginate($client, $filter, 50);
 
         $openCharges = CommercialCharge::query()
             ->open()
@@ -104,7 +90,10 @@ class ClientController extends Controller
         return view('clients.show', [
             'client' => $client,
             'balances' => $balances,
-            'entries' => $entriesWithBalance,
+            'timeline' => $timeline['items'],
+            'timelineTotal' => $timeline['total'],
+            'ccFilter' => $timeline['filter'],
+            'ccFilters' => $timeline['filters'],
             'openCharges' => $openCharges,
         ]);
     }

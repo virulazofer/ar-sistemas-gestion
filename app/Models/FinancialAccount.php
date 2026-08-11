@@ -18,6 +18,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'aliases',
     'status',
     'external_identifier',
+    'cbu_cvu',
+    'cuit',
+    'card_last4',
+    'card_brand',
+    'card_holder',
+    'card_expiry_month',
+    'card_expiry_year',
     'description',
     'cached_balance',
 ])]

@@ -14,6 +14,12 @@ return [
         'buy_field' => env('DOLARAPI_BUY_FIELD', 'compra'),
     ],
 
+    'argentinadatos' => [
+        'base_url' => env('ARGENTINADATOS_BASE_URL', 'https://api.argentinadatos.com/v1'),
+        'oficial_path' => env('ARGENTINADATOS_OFICIAL_PATH', '/cotizaciones/dolares/oficial'),
+        'timeout' => (int) env('ARGENTINADATOS_TIMEOUT', 30),
+    ],
+
     'money_decimals' => 2,
     'rate_decimals' => 6,
 

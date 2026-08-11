@@ -52,6 +52,48 @@ class ProductService
         });
     }
 
+    /**
+     * Baja masiva segura: elimina solo si no hay relaciones; si las hay, archiva (inactive).
+     *
+     * @param  list<int>  $ids
+     * @return array{deleted: int, archived: int, skipped: int}
+     */
+    public function bulkDeleteOrArchive(array $ids): array
+    {
+        $deleted = 0;
+        $archived = 0;
+        $skipped = 0;
+
+        foreach ($ids as $id) {
+            $product = Product::query()->find($id);
+            if (! $product) {
+                $skipped++;
+                continue;
+            }
+
+            $hasRelations = $product->lots()->exists()
+                || $product->inventoryMovements()->exists()
+                || $product->serials()->exists()
+                || $product->units()->exists()
+                || DB::table('sale_items')->where('product_id', $product->id)->exists()
+                || DB::table('quotation_items')->where('product_id', $product->id)->exists()
+                || DB::table('purchase_items')->where('product_id', $product->id)->exists()
+                || DB::table('equipment_components')->where('product_id', $product->id)->exists();
+
+            if ($hasRelations) {
+                $product->update(['status' => Product::STATUS_INACTIVE]);
+                $this->audit->log('product_archived', $product, null, ['id' => $product->id], 'Producto archivado (relaciones)');
+                $archived++;
+            } else {
+                $this->audit->log('product_deleted', $product, $product->toArray(), null, 'Producto eliminado');
+                $product->delete();
+                $deleted++;
+            }
+        }
+
+        return compact('deleted', 'archived', 'skipped');
+    }
+
     public function createCategory(string $name, int $sortOrder = 0): ProductCategory
     {
         $slug = Str::slug($name);

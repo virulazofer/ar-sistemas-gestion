@@ -136,6 +136,69 @@ class ClientLedgerService
     }
 
     /**
+     * Apertura manual de CC: no borra movimientos previos.
+     * El saldo de presentación (+ = nos deben / rojo) se convierte a signo ledger (− = deuda).
+     *
+     * @param  array{
+     *   currency_code: string,
+     *   balance: string|float|int,
+     *   reason: string,
+     *   entry_date?: string,
+     *   description?: string|null,
+     *   set_control_desde?: bool
+     * }  $data
+     */
+    public function registerOpeningBalance(Client $client, array $data): ClientLedgerEntry
+    {
+        $reason = trim((string) ($data['reason'] ?? ''));
+        if ($reason === '') {
+            throw new InvalidArgumentException('La apertura de CC requiere un motivo.');
+        }
+
+        $displayBalance = Money::normalize($data['balance']);
+        if (Money::isZero($displayBalance)) {
+            throw new InvalidArgumentException('El saldo de apertura no puede ser cero.');
+        }
+
+        // Presentación: + = nos deben → ledger sign −1 (charge/debt)
+        $sign = Money::isPositive($displayBalance) ? -1 : 1;
+        $amount = Money::abs($displayBalance);
+
+        return DB::transaction(function () use ($client, $data, $reason, $sign, $amount, $displayBalance) {
+            $entry = $this->createEntry($client, ClientLedgerType::Adjustment, [
+                'currency_code' => $data['currency_code'],
+                'amount' => $amount,
+                'entry_date' => $data['entry_date'] ?? now()->toDateString(),
+                'description' => $data['description'] ?? 'APERTURA de cuenta corriente',
+                'reason' => $reason,
+                'regularization_kind' => 'opening_balance',
+            ], sign: $sign, requiresFinance: false);
+
+            $entry->update([
+                'regularization_kind' => 'opening_balance',
+                'description' => $entry->description ?: 'APERTURA de cuenta corriente',
+            ]);
+
+            if (! empty($data['set_control_desde'])) {
+                $desde = $data['entry_date'] ?? now()->toDateString();
+                $client->update(['control_cc_desde' => $desde]);
+            }
+
+            $this->audit->log('client_cc_opening', $entry, null, [
+                'client_id' => $client->id,
+                'display_balance' => $displayBalance,
+                'ledger_sign' => $sign,
+                'amount' => $amount,
+                'currency' => $data['currency_code'],
+                'reason' => $reason,
+                'kind' => 'APERTURA',
+            ], 'Apertura manual de cuenta corriente');
+
+            return $entry->fresh();
+        });
+    }
+
+    /**
      * Pago de cliente: atómico CC + ingreso financiero.
      *
      * @param  array{
@@ -278,7 +341,8 @@ class ClientLedgerService
             }
 
             $currency = Currency::query()->where('code', strtoupper((string) $data['currency_code']))->firstOrFail();
-            $fx = $this->resolveFx($data['exchange_rate_id'] ?? null);
+            $entryDate = $data['entry_date'] ?? now()->toDateString();
+            $fx = $this->resolveFx($data['exchange_rate_id'] ?? null, $entryDate);
             $equivalents = $this->equivalents($currency->code, $amount, $fx['value']);
             $signed = Money::mul($amount, (string) $sign);
 
@@ -293,7 +357,7 @@ class ClientLedgerService
                 'exchange_rate_at' => $fx['at'],
                 'amount_ars' => $equivalents['ars'],
                 'amount_usd' => $equivalents['usd'],
-                'entry_date' => $data['entry_date'] ?? now()->toDateString(),
+                'entry_date' => $entryDate,
                 'entry_time' => $data['entry_time'] ?? now()->format('H:i:s'),
                 'user_id' => Auth::id() ?? throw new RuntimeException('Usuario requerido.'),
                 'description' => $data['description'] ?? null,
@@ -334,7 +398,7 @@ class ClientLedgerService
     /**
      * @return array{id: ?int, value: string, at: mixed}
      */
-    private function resolveFx(?int $exchangeRateId): array
+    private function resolveFx(?int $exchangeRateId, ?string $asOfDate = null): array
     {
         if ($exchangeRateId) {
             $rate = \App\Models\ExchangeRate::query()->findOrFail($exchangeRateId);
@@ -346,16 +410,19 @@ class ClientLedgerService
             ];
         }
 
-        try {
-            $latest = $this->rates->latestOfficialSell(false)['rate'];
-        } catch (Throwable) {
-            throw new RuntimeException('Se requiere una cotización vigente para registrar el movimiento de CC.');
+        $rate = $asOfDate ? $this->rates->rateForDate($asOfDate) : null;
+        if (! $rate) {
+            try {
+                $rate = $this->rates->latestOfficialSell(false)['rate'];
+            } catch (Throwable) {
+                throw new RuntimeException('Se requiere una cotización vigente para registrar el movimiento de CC.');
+            }
         }
 
         return [
-            'id' => $latest->id,
-            'value' => Money::normalize($latest->rate, 6),
-            'at' => $latest->rate_at,
+            'id' => $rate->id,
+            'value' => Money::normalize($rate->rate, 6),
+            'at' => $rate->rate_at,
         ];
     }
 

@@ -1,7 +1,10 @@
 <x-app-layout>
     <x-slot name="header">
         <div class="flex flex-wrap items-center justify-between gap-3">
-            <h1 class="text-xl font-semibold">Cotizaciones</h1>
+            <div class="flex items-center gap-2">
+                <h1 class="text-xl font-semibold">Cotizaciones</h1>
+                <x-page-help topic="exchange_rates" />
+            </div>
             @can('exchange_rates.create')
                 <a href="{{ route('exchange-rates.import') }}" class="ar-btn ar-btn-secondary text-xs">Importar histórico</a>
             @endcan
@@ -66,6 +69,46 @@
         </div>
         <button class="ar-btn ar-btn-secondary">Filtrar historial</button>
     </form>
+
+    @can('exchange_rates.create')
+        <div class="ar-card mb-4 space-y-3 p-4">
+            <h2 class="font-semibold">Backfill histórico (ArgentinaDatos · oficial/BNA)</h2>
+            <p class="ar-muted text-sm">DolarAPI sigue siendo la fuente de la cotización vigente. Este backfill completa el histórico sin inventar fines de semana.</p>
+            <form method="POST" action="{{ route('exchange-rates.backfill.preview') }}" class="flex flex-wrap items-end gap-3">
+                @csrf
+                <div>
+                    <label class="ar-label" for="bf_from">Desde</label>
+                    <input id="bf_from" type="date" name="from" value="{{ old('from', $backfillPreview['from'] ?? '2026-01-01') }}" class="ar-input" required>
+                </div>
+                <div>
+                    <label class="ar-label" for="bf_to">Hasta</label>
+                    <input id="bf_to" type="date" name="to" value="{{ old('to', $backfillPreview['to'] ?? now()->toDateString()) }}" class="ar-input">
+                </div>
+                <button class="ar-btn ar-btn-secondary">Vista previa</button>
+            </form>
+            @error('backfill')
+                <p class="text-sm" style="color: var(--ar-danger);">{{ $message }}</p>
+            @enderror
+            @if (! empty($backfillPreview))
+                <div class="rounded border p-3 text-sm" style="border-color: var(--ar-border);">
+                    <p><strong>{{ $backfillPreview['from'] }} → {{ $backfillPreview['to'] }}</strong></p>
+                    <p>Filas API: {{ $backfillPreview['api_rows'] }} · A importar: {{ $backfillPreview['to_import'] }} · Ya presentes: {{ $backfillPreview['already_present'] }}</p>
+                    <p class="ar-muted">{{ $backfillPreview['weekend_note'] }}</p>
+                    @if (! empty($backfillPreview['sample']))
+                        <ul class="mt-2 list-disc ps-5">
+                            @foreach ($backfillPreview['sample'] as $row)
+                                <li>{{ $row['fecha'] }} · compra {{ $row['compra'] ?? '—' }} · venta {{ $row['venta'] }}</li>
+                            @endforeach
+                        </ul>
+                    @endif
+                    <form method="POST" action="{{ route('exchange-rates.backfill.confirm') }}" class="mt-3">
+                        @csrf
+                        <button class="ar-btn ar-btn-primary">Confirmar backfill</button>
+                    </form>
+                </div>
+            @endif
+        </div>
+    @endcan
 
     @if (count($chartPoints) > 1)
         @php
