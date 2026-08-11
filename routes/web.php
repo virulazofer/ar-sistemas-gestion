@@ -470,6 +470,9 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/categorias/{category}', [CategoryController::class, 'show'])
         ->middleware('permission:categories.view')
         ->name('categories.show');
+    Route::get('/subcategorias/{subcategory}', [CategoryController::class, 'showSubcategory'])
+        ->middleware('permission:categories.view')
+        ->name('subcategories.show');
     Route::post('/categorias', [CategoryController::class, 'store'])
         ->middleware('permission:categories.create')
         ->name('categories.store');
@@ -480,12 +483,17 @@ Route::middleware(['auth'])->group(function () {
     Route::middleware('permission:categories.view')->group(function () {
         Route::get('/plan-de-cuentas', [ChartAccountController::class, 'index'])->name('chart-accounts.index');
         Route::get('/plan-de-cuentas/mapa', [ChartAccountController::class, 'map'])->name('chart-accounts.map');
+        Route::get('/plan-de-cuentas/mapeo', [ChartAccountController::class, 'mappingTool'])->name('chart-accounts.mapping');
     });
     Route::middleware('permission:categories.create')->group(function () {
         Route::get('/plan-de-cuentas/crear', [ChartAccountController::class, 'create'])->name('chart-accounts.create');
         Route::post('/plan-de-cuentas', [ChartAccountController::class, 'store'])->name('chart-accounts.store');
     });
     Route::middleware('permission:categories.edit')->group(function () {
+        Route::post('/plan-de-cuentas/mapeo', [ChartAccountController::class, 'saveMapping'])->name('chart-accounts.mapping.save');
+        Route::post('/plan-de-cuentas/mapeo/defaults', [ChartAccountController::class, 'saveTypeDefaults'])->name('chart-accounts.mapping.type-defaults');
+        Route::post('/plan-de-cuentas/mapeo/preview', [ChartAccountController::class, 'previewApply'])->name('chart-accounts.mapping.preview');
+        Route::post('/plan-de-cuentas/mapeo/aplicar', [ChartAccountController::class, 'applyMapping'])->name('chart-accounts.mapping.apply');
         Route::get('/plan-de-cuentas/{chart_account}/editar', [ChartAccountController::class, 'edit'])->name('chart-accounts.edit');
         Route::put('/plan-de-cuentas/{chart_account}', [ChartAccountController::class, 'update'])->name('chart-accounts.update');
     });

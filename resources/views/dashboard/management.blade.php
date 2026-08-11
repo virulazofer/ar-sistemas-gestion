@@ -37,6 +37,11 @@
                     Período analizado: {{ $period['from_label'] }} — {{ $period['to_label'] }}
                     · Ámbito: {{ $d['scope'] === 'all' ? 'Todos' : ($d['scope'] === 'personal' ? 'Personal' : 'Profesional') }}
                 </p>
+                <p class="mt-1 text-xs">
+                    <a href="{{ route('chart-accounts.index') }}" style="color: var(--ar-brand);">Plan de cuentas (drill)</a>
+                    ·
+                    <a href="{{ route('reports.show', ['type' => 'finance-movements', 'chart_account_id' => 'unassigned']) }}" style="color: var(--ar-brand);">Movs. sin cuenta contable</a>
+                </p>
             </div>
             <x-page-help topic="management" />
         </div>

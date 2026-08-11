@@ -34,6 +34,16 @@
                         <option value="professional" @selected(($filters['scope'] ?? '') === 'professional')>Profesional</option>
                     </select>
                 </div>
+                <div>
+                    <label class="ar-label">Cuenta contable (plan)</label>
+                    <select name="chart_account_id" class="ar-input">
+                        <option value="">Todas</option>
+                        <option value="unassigned" @selected(($filters['chart_account_id'] ?? '') === 'unassigned')>Sin asignar</option>
+                        @foreach (\App\Models\ChartAccount::query()->orderBy('code')->get() as $ca)
+                            <option value="{{ $ca->id }}" @selected((string) ($filters['chart_account_id'] ?? '') === (string) $ca->id)>{{ $ca->code }} — {{ $ca->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
             @endif
             <div class="flex items-end"><button class="ar-btn ar-btn-primary w-full">Filtrar</button></div>
         </form>

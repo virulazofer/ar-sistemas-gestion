@@ -3,13 +3,15 @@
 return [
     'movements.quick' => [
         'title' => 'Carga de movimiento',
-        'summary' => 'Registro rápido de ingresos y egresos financieros personales o profesionales.',
+        'summary' => 'Registro rápido de ingresos, egresos y transferencias. Orden: Fecha → Ámbito → Descripción → Categoría → Subcategoría → Importe → Cuenta financiera.',
         'bullets' => [
-            'Elegí tipo (ingreso/egreso), cuenta, moneda e importe.',
-            'El sistema congela el equivalente ARS/USD según la cotización de la fecha del movimiento.',
-            'No reemplaza compras, ventas ni ajustes de stock.',
+            'Ingreso: Cliente opcional + «Aplicar a CC» reutiliza el cobro (un solo crédito financiero).',
+            'Sin deuda suficiente: A pago a cuenta · B crear cargo+aplicar · C solo ingreso · D cancelar. No se inventa deuda.',
+            'Gasto en tarjeta/pasivo: etiqueta «Cuenta debitada (pasivo)»; el pago de resumen es transferencia.',
+            'El sistema congela ARS/USD según la cotización de la fecha del movimiento.',
         ],
-        'flow' => 'Completar datos → Guardar → El movimiento queda posted y afecta saldos de cuenta.',
+        'diagram' => "Movimiento\n├─ Cuenta financiera (caja/banco/tarjeta) ← dónde vive el dinero\n├─ Categoría / Subcategoría ← clasificación operativa\n├─ Cuenta contable (plan) ← resuelta por mapeo dinámico\n└─ Cliente/CC (opcional en ingresos) ← cobro sin duplicar ingreso",
+        'flow' => 'Completar datos → Guardar → Confirmación compacta (cuenta acreditada/debitada) → posted.',
     ],
     'dashboard' => [
         'title' => 'Tablero operativo',
@@ -42,20 +44,22 @@ return [
     ],
     'categories' => [
         'title' => 'Categorías financieras',
-        'summary' => 'Clasificación operativa de movimientos (no es una cuenta de dinero).',
+        'summary' => 'Clasificación operativa expandible con analítica (totales, promedio, mensual, click-through).',
         'bullets' => [
             'Categoría ≠ cuenta financiera (caja/banco) y ≠ cuenta del plan contable por sí sola.',
-            'Puede asociarse a una cuenta del plan de cuentas.',
-            'En el detalle ves totales, promedio mensual y movimientos del período.',
+            'Expandí una categoría para ver subcategorías y totales del período.',
+            'El detalle permite filtros de fechas y desglose por subcategoría.',
         ],
-        'flow' => 'Listado → clic en categoría → filtrá período → profundizá en movimientos.',
+        'diagram' => "Dimensiones de un movimiento\n[Fecha] [Ámbito] [Descripción]\n[Categoría → Subcategoría] → mapea a [Cuenta contable]\n[Importe] en [Cuenta financiera]",
+        'flow' => 'Listado expandible → clic categoría/sub → filtrá período → movimientos.',
     ],
     'exchange_rates' => [
         'title' => 'Cotizaciones',
         'summary' => 'USD/ARS oficial: vigente (DolarAPI) e histórico (ArgentinaDatos / importación).',
         'bullets' => [
+            'Gráfico: eje X = fechas, Y = ARS/USD; leyenda compra/venta; tooltip con fecha/compra/venta/fuente.',
             'DolarAPI actualiza la cotización vigente sin borrar el histórico.',
-            'Backfill ArgentinaDatos (oficial/BNA) es idempotente; no inventa fines de semana.',
+            'Backfill ArgentinaDatos es idempotente; no inventa fines de semana.',
             'Los movimientos congelan la cotización de su fecha; no se recalculan en silencio.',
         ],
         'flow' => 'Filtrá rango → preview backfill → confirmar → el histórico queda disponible para valuación.',
@@ -83,11 +87,12 @@ return [
         'title' => 'Clientes',
         'summary' => 'Maestro de clientes y su cuenta corriente.',
         'bullets' => [
-            'Particular: DNI obligatorio; CUIT opcional.',
-            'Empresa: CUIT y razón social obligatorios.',
+            'Particular: DNI obligatorio; CUIT opcional (validador central 11 dígitos + DV).',
+            'Empresa: CUIT y razón social obligatorios (mismo validador que proveedores/cuentas).',
             'La condición fiscal es un catálogo (sin lógica ARCA todavía).',
             'Apertura de CC y ajustes quedan auditados.',
         ],
+        'diagram' => "Ingreso + Aplicar a CC\n→ 1 movimiento financiero (crédito)\n→ aplicaciones a cargos / pago a cuenta\n(nunca 2 ingresos por el mismo cobro)",
         'flow' => 'Convención CC (presentación): + rojo = nos deben; − verde = a favor del cliente.',
     ],
     'clients_cc' => [
@@ -104,7 +109,8 @@ return [
         'title' => 'Proveedores',
         'summary' => 'Maestro de proveedores y su cuenta corriente.',
         'bullets' => [
-            'Misma lógica de tipo Particular / Empresa que clientes.',
+            'Misma lógica Particular / Empresa que clientes.',
+            'CUIT: mismo validador central (11 dígitos + dígito verificador).',
             'Las compras generan deuda; los pagos la reducen.',
         ],
     ],
@@ -156,10 +162,23 @@ return [
         'title' => 'Plan de cuentas',
         'summary' => 'Jerarquía contable (Activo/Pasivo/…); distinta de categorías y de cajas.',
         'bullets' => [
+            'Árbol con totales reales de movimientos posted.',
+            'Alerta roja si hay movimientos sin cuenta → asistente de mapeo.',
             'Alta/edición con padre, tipo y vista de impacto (“usado por”).',
-            'Mapa interactivo desde la base de datos.',
             'Documentación: docs/plan-de-cuentas.md.',
         ],
+        'diagram' => "Cuenta financiera ≠ Categoría ≠ Cuenta contable\nCaja/Banco/Tarjeta | Alimentación/Servicios | 5.1 Gastos personales",
+    ],
+    'chart_accounts.mapping' => [
+        'title' => 'Mapeo categorías → plan',
+        'summary' => 'Reglas dinámicas con precedencia subcategoría > categoría > tipo > sin asignar.',
+        'bullets' => [
+            'Preferí mapear reglas; no reescribas cientos de movimientos a mano.',
+            'Materializá históricos solo con preview + auditoría + confirmar aplicar.',
+            'Podés crear una cuenta contable inline y asignarla de inmediato.',
+            'No recalcula FX congelado al aplicar mapeo.',
+        ],
+        'flow' => 'Asignar reglas → Vista previa → Revisar muestra → Confirmar aplicar.',
     ],
     'movements' => [
         'title' => 'Movimientos',

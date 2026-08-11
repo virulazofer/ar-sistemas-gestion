@@ -44,8 +44,11 @@
         <label class="flex items-center gap-2 text-sm">
             <input type="checkbox" name="is_active" value="1" @checked(old('is_active', true))> Activa
         </label>
+        @if (!empty($returnTo))
+            <input type="hidden" name="return" value="{{ $returnTo }}">
+        @endif
         <div class="flex justify-end gap-2">
-            <a href="{{ route('chart-accounts.index') }}" class="ar-btn ar-btn-secondary">Cancelar</a>
+            <a href="{{ ($returnTo ?? null) === 'mapping' ? route('chart-accounts.mapping') : route('chart-accounts.index') }}" class="ar-btn ar-btn-secondary">Cancelar</a>
             <button class="ar-btn ar-btn-primary">Crear</button>
         </div>
     </form>

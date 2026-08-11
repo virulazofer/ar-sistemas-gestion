@@ -36,6 +36,7 @@ class ReportService
      *   account_id?: int|null,
      *   currency_code?: string|null,
      *   category_id?: int|null,
+     *   chart_account_id?: int|string|null,
      *   scope?: string|null,
      *   type?: string|null,
      *   user_id?: int|null,
@@ -77,6 +78,13 @@ class ReportService
         }
         if (! empty($filters['user_id'])) {
             $query->where('user_id', (int) $filters['user_id']);
+        }
+        if (! empty($filters['chart_account_id'])) {
+            if ($filters['chart_account_id'] === 'unassigned') {
+                $query->whereNull('chart_account_id');
+            } else {
+                $query->where('chart_account_id', (int) $filters['chart_account_id']);
+            }
         }
 
         $rows = [];

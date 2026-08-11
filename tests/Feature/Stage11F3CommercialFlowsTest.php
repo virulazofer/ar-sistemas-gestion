@@ -81,7 +81,7 @@ test('1 código cliente único permanente y formato', function () {
         'name' => 'DAASA TEST',
         'party_type' => 'empresa',
         'business_name' => 'DAASA TEST SA',
-        'cuit' => '30-71234567-8',
+        'cuit' => '30-71234567-1',
         'tax_condition' => 'responsable_inscripto',
         'status' => 'active',
     ])->assertRedirect();

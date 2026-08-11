@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Suppliers;
 use App\Http\Controllers\Controller;
 use App\Models\Document;
 use App\Models\Supplier;
+use App\Rules\Cuit;
 use App\Services\AuditLogger;
 use App\Services\Suppliers\SupplierLedgerService;
 use Illuminate\Http\RedirectResponse;
@@ -102,7 +103,7 @@ class SupplierController extends Controller
     {
         $partyType = (string) $request->input('party_type', 'particular');
 
-        return $request->validate([
+        $data = $request->validate([
             'name' => ['required', 'string', 'max:180'],
             'party_type' => ['required', Rule::enum(\App\Enums\PartyType::class)],
             'business_name' => [
@@ -116,7 +117,7 @@ class SupplierController extends Controller
                 'nullable',
                 'string',
                 'max:20',
-                'regex:/^[\d\-.\s]{11,16}$/',
+                new Cuit,
             ],
             'dni' => [
                 Rule::requiredIf($partyType === \App\Enums\PartyType::Particular->value),
@@ -133,5 +134,9 @@ class SupplierController extends Controller
             'status' => ['required', Rule::in(['active', 'inactive'])],
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
+
+        $data['cuit'] = Cuit::normalize($data['cuit'] ?? null);
+
+        return $data;
     }
 }

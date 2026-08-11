@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Models\CommercialCharge;
 use App\Models\Document;
+use App\Rules\Cuit;
 use App\Services\AuditLogger;
 use App\Services\Clients\CcRegularizationService;
 use App\Services\Clients\ClientCcTimelineService;
@@ -193,7 +194,7 @@ class ClientController extends Controller
                 'nullable',
                 'string',
                 'max:20',
-                'regex:/^[\d\-.\s]{11,16}$/',
+                new Cuit,
             ],
             'dni' => [
                 Rule::requiredIf($partyType === \App\Enums\PartyType::Particular->value),
@@ -216,6 +217,9 @@ class ClientController extends Controller
             $rules['code'] = ['nullable', 'integer', 'min:1'];
         }
 
-        return $request->validate($rules);
+        $data = $request->validate($rules);
+        $data['cuit'] = Cuit::normalize($data['cuit'] ?? null);
+
+        return $data;
     }
 }

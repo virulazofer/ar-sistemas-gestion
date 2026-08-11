@@ -28,7 +28,7 @@ function makeSupplier(array $attrs = []): Supplier
     return Supplier::query()->create(array_merge([
         'name' => 'Proveedor X',
         'business_name' => 'Proveedor X SA',
-        'cuit' => '30-11111111-1',
+        'cuit' => '30-11111111-8',
         'tax_condition' => 'Responsable Inscripto',
         'status' => 'active',
     ], $attrs));
@@ -42,7 +42,7 @@ test('crear proveedor con datos fiscales', function () {
         'name' => 'Insumos Norte',
         'party_type' => 'empresa',
         'business_name' => 'Insumos Norte SRL',
-        'cuit' => '30-22222222-2',
+        'cuit' => '30-22222222-9',
         'dni' => null,
         'tax_condition' => 'responsable_inscripto',
         'phone' => '111',
@@ -53,7 +53,7 @@ test('crear proveedor con datos fiscales', function () {
         'notes' => 'Nota',
     ])->assertRedirect();
 
-    expect(Supplier::where('cuit', '30-22222222-2')->exists())->toBeTrue();
+    expect(Supplier::where('cuit', '30222222229')->exists())->toBeTrue();
     expect(AuditLog::where('action', 'supplier_created')->exists())->toBeTrue();
 });
 

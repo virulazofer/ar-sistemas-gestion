@@ -49,13 +49,13 @@ test('crear cliente empresa requiere CUIT y razón social', function () {
         'name' => 'Empresa SA',
         'party_type' => 'empresa',
         'business_name' => 'Empresa SA',
-        'cuit' => '30-71234567-8',
+        'cuit' => '30-71234567-1',
         'dni' => null,
         'tax_condition' => 'responsable_inscripto',
         'status' => 'active',
     ])->assertRedirect();
 
-    expect(Client::where('cuit', '30-71234567-8')->exists())->toBeTrue();
+    expect(Client::where('cuit', '30712345671')->exists())->toBeTrue();
 });
 
 test('cliente empresa sin CUIT falla validación', function () {

@@ -54,6 +54,10 @@
                         <span class="font-semibold">Flujo típico:</span> {{ $help['flow'] }}
                     </p>
                 @endif
+
+                @if (!empty($help['diagram']))
+                    <pre class="mt-3 overflow-x-auto rounded-md border border-[var(--ar-border)] bg-[var(--ar-surface-2)] p-3 text-xs leading-relaxed">{{ $help['diagram'] }}</pre>
+                @endif
             </div>
         </div>
     </div>

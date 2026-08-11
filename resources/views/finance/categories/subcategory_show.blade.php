@@ -2,17 +2,16 @@
     <x-slot name="header">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-2">
-                <h1 class="text-xl font-semibold">{{ $category->name }}</h1>
+                <h1 class="text-xl font-semibold">{{ $subcategory->name }}</h1>
                 <x-page-help topic="categories" />
             </div>
-            <a href="{{ route('categories.index') }}" class="ar-btn ar-btn-secondary">Volver</a>
+            <a href="{{ route('categories.show', $subcategory->category) }}" class="ar-btn ar-btn-secondary">Volver a categoría</a>
         </div>
     </x-slot>
 
     <div class="ar-card mb-4 space-y-2 p-4 text-sm">
-        <p><strong>Ámbito:</strong> {{ match($category->scope) { 'personal' => 'Personal', 'professional' => 'Profesional', 'both' => 'Ambos', default => $category->scope } }}</p>
-        <p><strong>Plan de cuentas:</strong> {{ $category->chartAccount?->code }} {{ $category->chartAccount?->name ?: '—' }}</p>
-        <p class="ar-muted">Una categoría clasifica movimientos; no es una cuenta financiera (caja/banco) ni una cuenta del plan por sí sola.</p>
+        <p><strong>Categoría:</strong> {{ $subcategory->category?->name }}</p>
+        <p><strong>Plan de cuentas:</strong> {{ $subcategory->chartAccount?->code }} {{ $subcategory->chartAccount?->name ?: '— (hereda / default tipo)' }}</p>
     </div>
 
     <form method="GET" class="ar-card mb-4 flex flex-wrap items-end gap-3 p-4">
@@ -47,28 +46,6 @@
             </ul>
         </div>
     </div>
-
-    @if (($subBreakdown ?? collect())->isNotEmpty())
-        <div class="ar-card mb-4 overflow-x-auto">
-            <h2 class="border-b px-4 py-3 font-semibold" style="border-color: var(--ar-border);">Por subcategoría</h2>
-            <table class="ar-table">
-                <thead><tr><th>Subcategoría</th><th class="text-right">ARS</th><th class="text-right">Movs</th></tr></thead>
-                <tbody>
-                    @foreach ($category->subcategories as $sub)
-                        @php $row = $subBreakdown->get($sub->id); @endphp
-                        <tr>
-                            <td>
-                                <a href="{{ route('subcategories.show', ['subcategory' => $sub, 'from' => $from->format('Y-m-d'), 'to' => $to->format('Y-m-d')]) }}" style="color: var(--ar-brand);">{{ $sub->name }}</a>
-                            </td>
-                            <td class="text-right">{{ number_format((float) ($row->total_ars ?? 0), 2, ',', '.') }}</td>
-                            <td class="text-right">{{ (int) ($row->cnt ?? 0) }}</td>
-                        </tr>
-                    @endforeach
-                    @php $orphan = $subBreakdown->get(null) ?? $subBreakdown->first(fn ($r, $k) => $k === '' || $k === null); @endphp
-                </tbody>
-            </table>
-        </div>
-    @endif
 
     @if ($monthly->isNotEmpty())
         <div class="ar-card mb-4 overflow-x-auto">

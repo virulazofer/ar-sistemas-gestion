@@ -5,7 +5,6 @@ namespace App\Services\Finance;
 use App\Enums\MovementScope;
 use App\Enums\MovementStatus;
 use App\Enums\MovementType;
-use App\Models\Category;
 use App\Models\ExchangeRate;
 use App\Models\FinancialAccount;
 use App\Models\Movement;
@@ -24,6 +23,7 @@ class MovementService
     public function __construct(
         private readonly BalanceService $balances,
         private readonly ExchangeRateService $rates,
+        private readonly ChartAccountMappingService $chartMapping,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -65,7 +65,14 @@ class MovementService
 
             $categoryId = $data['category_id'] ?? null;
             $subcategoryId = $data['subcategory_id'] ?? null;
-            $chartAccountId = $this->resolveChartAccountId($categoryId, $subcategoryId);
+            if ($subcategoryId) {
+                $sub = Subcategory::query()->find($subcategoryId);
+                if ($sub && $categoryId && (int) $sub->category_id !== (int) $categoryId) {
+                    throw new InvalidArgumentException('La subcategoría no pertenece a la categoría indicada.');
+                }
+            }
+            $chartAccountId = $data['chart_account_id']
+                ?? $this->chartMapping->resolve($categoryId, $subcategoryId, $type->value)['chart_account_id'];
 
             $movement = Movement::query()->create([
                 'transfer_id' => null,
@@ -328,25 +335,6 @@ class MovementService
         }
 
         throw new InvalidArgumentException('Moneda no soportada en Etapa 2.');
-    }
-
-    private function resolveChartAccountId(?int $categoryId, ?int $subcategoryId): ?int
-    {
-        if ($subcategoryId) {
-            $sub = Subcategory::query()->find($subcategoryId);
-            if ($sub?->chart_account_id) {
-                return $sub->chart_account_id;
-            }
-            if ($sub && $categoryId && $sub->category_id !== $categoryId) {
-                throw new InvalidArgumentException('La subcategoría no pertenece a la categoría indicada.');
-            }
-        }
-
-        if ($categoryId) {
-            return Category::query()->find($categoryId)?->chart_account_id;
-        }
-
-        return null;
     }
 
     private function assertAccountActive(FinancialAccount $account): void

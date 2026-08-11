@@ -385,9 +385,17 @@ class ExchangeRateService
     }
 
     /**
-     * Puntos para gráfico simple (venta) en el período.
+     * Puntos para gráfico (compra/venta) en el período.
      *
-     * @return list<array{label: string, value: float}>
+     * @return list<array{
+     *   label: string,
+     *   date: string,
+     *   value: float,
+     *   buy: ?float,
+     *   sell: float,
+     *   source: string,
+     *   provider: ?string
+     * }>
      */
     public function chartPoints(?Carbon $from = null, ?Carbon $to = null, int $limit = 120): array
     {
@@ -403,10 +411,15 @@ class ExchangeRateService
             $query->where('rate_at', '<=', $to->copy()->endOfDay());
         }
 
-        return $query->limit($limit)->get(['rate_at', 'rate'])
+        return $query->limit($limit)->get(['rate_at', 'rate', 'rate_buy', 'source', 'provider'])
             ->map(fn (ExchangeRate $r) => [
                 'label' => $r->rate_at?->format('d/m') ?? '',
+                'date' => $r->rate_at?->format('d/m/Y') ?? '',
                 'value' => (float) $r->rate,
+                'buy' => $r->rate_buy !== null ? (float) $r->rate_buy : null,
+                'sell' => (float) $r->rate,
+                'source' => (string) ($r->source ?? ''),
+                'provider' => $r->provider,
             ])
             ->all();
     }
