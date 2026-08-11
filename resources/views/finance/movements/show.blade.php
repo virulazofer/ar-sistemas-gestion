@@ -17,7 +17,7 @@
             <p><span class="ar-muted">Descripción:</span> {{ $movement->description ?? '—' }}</p>
             <p><span class="ar-muted">Estado:</span> {{ $movement->status->value }}</p>
             @if ($movement->transfer_id)
-                <p><span class="ar-muted">Transfer ID:</span> {{ $movement->transfer_id }}</p>
+                <p><span class="ar-muted">ID transferencia:</span> {{ $movement->transfer_id }}</p>
             @endif
             @if ($movement->status->value === 'voided')
                 <p><span class="ar-muted">Anulado por:</span> {{ $movement->voidedByUser?->name }} · {{ $movement->voided_at }}</p>

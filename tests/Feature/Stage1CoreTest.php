@@ -108,17 +108,17 @@ test('el tema claro u oscuro se guarda en el usuario', function () {
     expect(AuditLog::where('action', 'theme_changed')->exists())->toBeTrue();
 });
 
-test('el boton Tema de la navegacion envia el campo theme y alterna preferencia', function () {
+test('el popover Apariencia envia theme y alterna preferencia', function () {
     $user = makeUserWithPermissions(['dashboard.view']);
     expect($user->theme)->toBe('light');
 
     $this->actingAs($user)
         ->get(route('dashboard'))
         ->assertOk()
+        ->assertSee('Apariencia', false)
         ->assertSee('name="theme"', false)
         ->assertSee('value="dark"', false);
 
-    // Mismo payload que genera el formulario de layouts/navigation (toggle light → dark).
     $this->actingAs($user)
         ->from(route('dashboard'))
         ->post(route('theme.update'), ['theme' => 'dark'])

@@ -38,6 +38,7 @@ class UserController extends Controller
             'password' => ['required', 'confirmed', Password::defaults()],
             'status' => ['required', Rule::in([User::STATUS_ACTIVE, User::STATUS_INACTIVE])],
             'theme' => ['required', Rule::in([User::THEME_LIGHT, User::THEME_DARK])],
+            'palette' => ['nullable', Rule::in(\App\Support\Appearance::palettes())],
             'roles' => ['nullable', 'array'],
             'roles.*' => ['string', 'exists:roles,name'],
         ]);
@@ -49,12 +50,13 @@ class UserController extends Controller
             'password' => $data['password'],
             'status' => $data['status'],
             'theme' => $data['theme'],
+            'palette' => \App\Support\Appearance::normalizePalette($data['palette'] ?? null),
             'email_verified_at' => now(),
         ]);
 
         $user->syncRoles($data['roles'] ?? []);
 
-        $this->audit->log('created', $user, null, $user->only(['name', 'username', 'email', 'status', 'theme']), 'Usuario creado');
+        $this->audit->log('created', $user, null, $user->only(['name', 'username', 'email', 'status', 'theme', 'palette']), 'Usuario creado');
 
         return redirect()->route('users.index')->with('status', 'Usuario creado correctamente.');
     }
@@ -83,11 +85,12 @@ class UserController extends Controller
             'password' => ['nullable', 'confirmed', Password::defaults()],
             'status' => ['required', Rule::in([User::STATUS_ACTIVE, User::STATUS_INACTIVE])],
             'theme' => ['required', Rule::in([User::THEME_LIGHT, User::THEME_DARK])],
+            'palette' => ['nullable', Rule::in(\App\Support\Appearance::palettes())],
             'roles' => ['nullable', 'array'],
             'roles.*' => ['string', 'exists:roles,name'],
         ]);
 
-        $old = $user->only(['name', 'username', 'email', 'status', 'theme']);
+        $old = $user->only(['name', 'username', 'email', 'status', 'theme', 'palette']);
 
         $payload = [
             'name' => $data['name'],
@@ -95,6 +98,7 @@ class UserController extends Controller
             'email' => $data['email'],
             'status' => $data['status'],
             'theme' => $data['theme'],
+            'palette' => \App\Support\Appearance::normalizePalette($data['palette'] ?? $user->palette),
         ];
 
         if (! empty($data['password'])) {
@@ -104,7 +108,7 @@ class UserController extends Controller
         $user->update($payload);
         $user->syncRoles($data['roles'] ?? []);
 
-        $this->audit->log('updated', $user, $old, $user->only(['name', 'username', 'email', 'status', 'theme']), 'Usuario actualizado');
+        $this->audit->log('updated', $user, $old, $user->only(['name', 'username', 'email', 'status', 'theme', 'palette']), 'Usuario actualizado');
 
         return redirect()->route('users.index')->with('status', 'Usuario actualizado correctamente.');
     }

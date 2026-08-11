@@ -7,14 +7,14 @@ use Database\Seeders\CurrencySeeder;
 use Database\Seeders\InventoryCatalogSeeder;
 use Illuminate\Support\Facades\DB;
 
-test('la topbar incluye busqueda global desktop y movil', function () {
+test('la topbar incluye command palette desktop y movil', function () {
     $user = makeUserWithPermissions(['dashboard.view']);
 
     $this->actingAs($user)
         ->get(route('dashboard'))
         ->assertOk()
         ->assertSee('ar-topbar-search', false)
-        ->assertSee('Buscar en AR Sistemas...', false)
+        ->assertSee('Buscar o ir a', false)
         ->assertSee('ar-topbar-search-desktop', false)
         ->assertSee('Abrir búsqueda', false)
         ->assertSee('/buscar', false);
@@ -44,7 +44,7 @@ test('busqueda JSON respeta permisos y navega a la entidad', function () {
         ->assertJsonPath('groups.clients', []);
 });
 
-test('consulta vacia o corta no ejecuta busquedas de entidades', function () {
+test('consulta vacia no ejecuta busquedas de entidades; un caracter si', function () {
     $admin = makeAdmin();
     test()->seed(CurrencySeeder::class);
 
@@ -57,9 +57,9 @@ test('consulta vacia o corta no ejecuta busquedas de entidades', function () {
     expect($queriesAfterEmpty)->toBe(0);
 
     DB::flushQueryLog();
-    $short = app(GlobalSearchService::class)->search('a', 5, $admin);
-    expect($short['clients'])->toBe([]);
-    expect(count(DB::getQueryLog()))->toBe(0);
+    $one = app(GlobalSearchService::class)->search('N', 5, $admin);
+    expect(collect($one['clients'])->pluck('label')->all())->toContain('No Debe Aparecer');
+    expect(count(DB::getQueryLog()))->toBeGreaterThan(0);
 
     $this->actingAs($admin)
         ->getJson(route('search', ['q' => '']))
@@ -76,6 +76,7 @@ test('pagina completa de busqueda sigue disponible', function () {
     $this->actingAs($admin)
         ->get(route('search', ['q' => 'Full Page']))
         ->assertOk()
+        ->assertSee('Resultados de búsqueda', false)
         ->assertSee('Full Page Search')
         ->assertSee(route('clients.show', Client::where('name', 'Full Page Search')->first()), false);
 });
@@ -93,7 +94,9 @@ test('busqueda sin resultados responde grupos vacios y UI muestra mensaje', func
         ->assertJsonPath('groups.equipment', [])
         ->assertJsonPath('groups.work_orders', [])
         ->assertJsonPath('groups.quotations', [])
-        ->assertJsonPath('groups.sales', []);
+        ->assertJsonPath('groups.sales', [])
+        ->assertJsonPath('groups.navigation', [])
+        ->assertJsonPath('groups.actions', []);
 
     $this->actingAs($admin)
         ->get(route('dashboard'))

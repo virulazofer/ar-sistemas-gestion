@@ -1,7 +1,10 @@
 <x-app-layout>
     <x-slot name="header">
         <div>
-            <h1 class="text-xl font-semibold">Matriz de permisos</h1>
+            <div class="flex items-center gap-2">
+                <h1 class="text-xl font-semibold">Matriz de permisos</h1>
+                <x-page-help topic="permissions" />
+            </div>
             <p class="ar-muted text-sm">Asigná permisos por rol. La autorización se aplica en el backend.</p>
         </div>
     </x-slot>

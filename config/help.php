@@ -11,8 +11,18 @@ return [
         ],
         'flow' => 'Completar datos → Guardar → El movimiento queda posted y afecta saldos de cuenta.',
     ],
+    'movements' => [
+        'title' => 'Movimientos',
+        'summary' => 'Historial de ingresos, egresos y transferencias entre cuentas.',
+        'bullets' => [
+            'Filtrá por ámbito, tipo y estado.',
+            'Un movimiento anulado deja de afectar saldos.',
+            'Las transferencias aparecen como par de salida/entrada.',
+        ],
+        'flow' => 'Consultá el listado → abrí el detalle → usá carga rápida para nuevos movimientos.',
+    ],
     'dashboard' => [
-        'title' => 'Dashboard operativo',
+        'title' => 'Tablero operativo',
         'summary' => 'Vista consolidada de liquidez, actividad, stock, equipos, OT, ventas y alertas.',
         'bullets' => [
             'Los filtros Personal / Profesional afectan la actividad del mes, no las cuentas líquidas compartidas.',
@@ -20,12 +30,22 @@ return [
             'Funciona aunque todavía no haya movimientos ni stock.',
         ],
     ],
+    'management' => [
+        'title' => 'Tablero de gestión',
+        'summary' => 'Indicadores de resultado, ranking de CC y Top 5 para decisión gerencial.',
+        'bullets' => [
+            'Los colores de resultado: verde = favorable, rojo = atención.',
+            'En CC de clientes: positivo (rojo) = nos deben; negativo (verde) = a favor del cliente.',
+            'Los totales no mezclan ARS con USD.',
+        ],
+        'flow' => 'Ajustá el período → revisá KPIs → profundizá con el enlace de cada tarjeta.',
+    ],
     'accounts' => [
         'title' => 'Cuentas financieras',
         'summary' => 'Cajas, bancos y billeteras donde vive el dinero.',
         'bullets' => [
             'Cada cuenta tiene moneda y tipo (efectivo, banco, billetera u otra).',
-            'Los saldos se recalculan desde movimientos posted.',
+            'Los saldos se recalculan desde movimientos confirmados.',
         ],
     ],
     'clients' => [
@@ -36,7 +56,17 @@ return [
             'Empresa: CUIT y razón social obligatorios.',
             'La condición fiscal es un catálogo (sin lógica ARCA todavía).',
         ],
-        'flow' => 'Saldo negativo en CC = deuda del cliente; positivo = crédito a su favor.',
+        'flow' => 'Convención CC (presentación): + rojo = nos deben; − verde = a favor del cliente.',
+    ],
+    'clients_cc' => [
+        'title' => 'Cuentas corrientes de clientes',
+        'summary' => 'Ranking de saldos a cobrar / a favor, con Top deudores.',
+        'bullets' => [
+            'Saldo positivo (rojo): el cliente nos debe.',
+            'Saldo negativo (verde): crédito a favor del cliente.',
+            'Cobros y regularización avanzada se documentan para la etapa 11F-3.',
+        ],
+        'flow' => 'Filtrá → ordená el ranking → abrí la ficha del cliente para el detalle de movimientos.',
     ],
     'suppliers' => [
         'title' => 'Proveedores',
@@ -132,12 +162,37 @@ return [
             'Exportá CSV/XLSX/PDF según permisos.',
         ],
     ],
+    'imports' => [
+        'title' => 'Importaciones',
+        'summary' => 'Carga asistida de datos e importación histórica controlada.',
+        'bullets' => [
+            'Revisá previsualizaciones antes de confirmar.',
+            'No altera saldos sin un flujo de importación explícito.',
+            'Los lotes quedan auditados.',
+        ],
+    ],
     'users' => [
         'title' => 'Usuarios y permisos',
         'summary' => 'Acceso al sistema y roles Spatie.',
         'bullets' => [
             'Los permisos controlan menús y acciones sensibles (p. ej. reconstruir stock).',
             'No compartas credenciales de staging/producción.',
+        ],
+    ],
+    'permissions' => [
+        'title' => 'Matriz de permisos',
+        'summary' => 'Asignación de permisos por rol.',
+        'bullets' => [
+            'Cambiar un permiso impacta menús, APIs y acciones protegidas.',
+            'Revisá el efecto antes de guardar en staging/producción.',
+        ],
+    ],
+    'audit' => [
+        'title' => 'Auditoría',
+        'summary' => 'Trazabilidad de acciones sensibles del sistema.',
+        'bullets' => [
+            'Cada evento registra usuario, acción y, cuando aplica, valores anteriores/nuevos.',
+            'Útil para investigar cambios de apariencia, movimientos y maestros.',
         ],
     ],
 ];

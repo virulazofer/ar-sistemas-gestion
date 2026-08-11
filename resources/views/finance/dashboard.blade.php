@@ -2,7 +2,7 @@
     <x-slot name="header">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
-                <h1 class="text-xl font-semibold">Dashboard financiero</h1>
+                <h1 class="text-xl font-semibold">Tablero financiero</h1>
                 <p class="ar-muted text-sm">Dinero disponible (no incluye por cobrar / por pagar).</p>
             </div>
             <div class="flex flex-wrap gap-2">

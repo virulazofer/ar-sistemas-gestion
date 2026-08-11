@@ -32,13 +32,13 @@
     <x-slot name="header">
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
-                <h1 class="text-xl font-semibold">Dashboard de Gestión</h1>
+                <h1 class="text-xl font-semibold">Tablero de gestión</h1>
                 <p class="ar-muted text-sm">
                     Período analizado: {{ $period['from_label'] }} — {{ $period['to_label'] }}
                     · Ámbito: {{ $d['scope'] === 'all' ? 'Todos' : ($d['scope'] === 'personal' ? 'Personal' : 'Profesional') }}
                 </p>
             </div>
-            <x-page-help topic="dashboard" />
+            <x-page-help topic="management" />
         </div>
     </x-slot>
 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Support\Appearance;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -15,16 +16,35 @@ class ThemeController extends Controller
     public function update(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'theme' => ['required', Rule::in([User::THEME_LIGHT, User::THEME_DARK])],
+            'theme' => ['required', Rule::in(Appearance::modes())],
+            'palette' => ['nullable', Rule::in(Appearance::palettes())],
         ]);
 
         /** @var User $user */
         $user = $request->user();
-        $old = ['theme' => $user->theme];
-        $user->update(['theme' => $data['theme']]);
+        $old = [
+            'theme' => $user->theme,
+            'palette' => $user->palette ?? Appearance::PALETTE_ACTUAL,
+        ];
 
-        $this->audit->log('theme_changed', $user, $old, ['theme' => $user->theme], 'Tema actualizado');
+        $payload = ['theme' => Appearance::normalizeMode($data['theme'])];
+        if (array_key_exists('palette', $data) && $data['palette'] !== null) {
+            $payload['palette'] = Appearance::normalizePalette($data['palette']);
+        }
 
-        return back()->with('status', 'Tema actualizado.');
+        $user->update($payload);
+
+        $this->audit->log(
+            'theme_changed',
+            $user,
+            $old,
+            [
+                'theme' => $user->theme,
+                'palette' => $user->appearancePalette(),
+            ],
+            'Apariencia actualizada'
+        );
+
+        return back()->with('status', 'Apariencia actualizada.');
     }
 }

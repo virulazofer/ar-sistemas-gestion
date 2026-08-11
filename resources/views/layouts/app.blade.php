@@ -1,5 +1,9 @@
 <!DOCTYPE html>
-<html lang="es" class="{{ auth()->user()?->prefersDarkTheme() ? 'dark' : '' }}">
+<html
+        lang="es"
+        class="{{ auth()->user()?->prefersDarkTheme() ? 'dark' : '' }}"
+        data-palette="{{ auth()->user()?->appearancePalette() ?? 'actual' }}"
+    >
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -200,8 +204,33 @@
                 text-decoration: none;
                 color: var(--ar-text);
             }
-            .ar-topbar-search-item:hover {
+            .ar-topbar-search-item:hover,
+            .ar-topbar-search-item.is-active {
                 background: var(--ar-surface-2);
+                color: var(--ar-brand);
+            }
+            .ar-appearance-popover {
+                background: var(--ar-surface);
+                border: 1px solid var(--ar-border);
+                border-radius: .75rem;
+                box-shadow: var(--ar-shadow);
+            }
+            .ar-appearance-choice {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border: 1px solid var(--ar-border);
+                background: var(--ar-surface-2);
+                border-radius: .5rem;
+                padding: .45rem .5rem;
+                font-size: .75rem;
+                font-weight: 600;
+                cursor: pointer;
+                color: var(--ar-text);
+            }
+            .ar-appearance-choice.is-selected {
+                border-color: var(--ar-brand);
+                background: var(--ar-brand-soft);
                 color: var(--ar-brand);
             }
             .ar-topbar-search-more {
@@ -346,11 +375,7 @@
                     @include('layouts.partials.topbar-search')
 
                     <div class="flex shrink-0 items-center gap-2">
-                        <form method="POST" action="{{ route('theme.update') }}">
-                            @csrf
-                            <input type="hidden" name="theme" value="{{ auth()->user()->prefersDarkTheme() ? 'light' : 'dark' }}">
-                            <button type="submit" class="ar-btn ar-btn-secondary text-xs">Tema</button>
-                        </form>
+                        @include('layouts.partials.appearance-popover')
                         <form method="POST" action="{{ route('logout') }}">
                             @csrf
                             <button class="ar-btn ar-btn-secondary text-xs">Salir</button>

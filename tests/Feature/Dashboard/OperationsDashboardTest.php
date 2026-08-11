@@ -19,7 +19,7 @@ it('renderiza dashboard operativo con base vacía (sin cotización) en todos los
     $this->actingAs($admin)
         ->get(route('dashboard.operations', ['scope' => $scope]))
         ->assertOk()
-        ->assertSee('Dashboard operativo');
+        ->assertSee('Tablero operativo');
 })->with(['personal', 'professional', 'all']);
 
 it('cachea snapshot serializable y re-renderiza con cotización', function () {

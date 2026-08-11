@@ -8,7 +8,10 @@
     <x-slot name="header">
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
-                <h1 class="text-xl font-semibold">Cuentas corrientes de clientes</h1>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-xl font-semibold">Cuentas corrientes de clientes</h1>
+                    <x-page-help topic="clients_cc" />
+                </div>
                 <p class="ar-muted text-sm">Ranking por saldo · positivo = nos deben · negativo = a favor del cliente</p>
             </div>
             <a href="{{ route('clients.index') }}" class="ar-btn ar-btn-secondary">ABM clientes</a>

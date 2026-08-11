@@ -33,12 +33,23 @@
         </select>
     </div>
     <div>
-        <label class="ar-label" for="theme">Tema</label>
+        <label class="ar-label" for="theme">Modo</label>
         <select id="theme" name="theme" class="ar-input">
             <option value="light" @selected(old('theme', $user?->theme ?? 'light') === 'light')>Claro</option>
             <option value="dark" @selected(old('theme', $user?->theme) === 'dark')>Oscuro</option>
         </select>
     </div>
+</div>
+
+<div>
+    <label class="ar-label" for="palette">Paleta</label>
+    <select id="palette" name="palette" class="ar-input">
+        @foreach (\App\Support\Appearance::palettes() as $paletteKey)
+            <option value="{{ $paletteKey }}" @selected(old('palette', $user?->palette ?? 'actual') === $paletteKey)>
+                {{ \App\Support\Appearance::paletteLabel($paletteKey) }}
+            </option>
+        @endforeach
+    </select>
 </div>
 
 <div>

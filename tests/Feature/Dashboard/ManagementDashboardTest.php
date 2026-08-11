@@ -77,13 +77,13 @@ it('renderiza dashboard de gestión y aparece en navegación', function () {
     $this->actingAs($admin)
         ->get(route('dashboard.management'))
         ->assertOk()
-        ->assertSee('Dashboard de Gestión')
+        ->assertSee('Tablero de gestión')
         ->assertSee('Período analizado:');
 
     $this->actingAs($admin)
         ->get(route('movements.quick'))
         ->assertOk()
-        ->assertSee('Dashboard de Gestión');
+        ->assertSee('Tablero de gestión');
 });
 
 it('selector mensual y navegación mes anterior/siguiente', function () {

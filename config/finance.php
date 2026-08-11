@@ -31,9 +31,9 @@ return [
     ],
 
     'movement_types' => [
-        'income' => 'Ingreso',
-        'expense' => 'Gasto',
-        'transfer_out' => 'Transferencia salida',
-        'transfer_in' => 'Transferencia entrada',
+        'income' => \App\Support\UiLabels::get('income', 'Ingresos'),
+        'expense' => \App\Support\UiLabels::get('expense', 'Egresos'),
+        'transfer_out' => \App\Support\UiLabels::get('transfer_out', 'Transferencia salida'),
+        'transfer_in' => \App\Support\UiLabels::get('transfer_in', 'Transferencia entrada'),
     ],
 ];

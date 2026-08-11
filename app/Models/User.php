@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Appearance;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -11,7 +12,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 
-#[Fillable(['name', 'username', 'email', 'password', 'status', 'theme'])]
+#[Fillable(['name', 'username', 'email', 'password', 'status', 'theme', 'palette'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -22,9 +23,9 @@ class User extends Authenticatable
 
     public const STATUS_INACTIVE = 'inactive';
 
-    public const THEME_LIGHT = 'light';
+    public const THEME_LIGHT = Appearance::MODE_LIGHT;
 
-    public const THEME_DARK = 'dark';
+    public const THEME_DARK = Appearance::MODE_DARK;
 
     protected function casts(): array
     {
@@ -46,6 +47,11 @@ class User extends Authenticatable
 
     public function prefersDarkTheme(): bool
     {
-        return $this->theme === self::THEME_DARK;
+        return Appearance::normalizeMode($this->theme) === Appearance::MODE_DARK;
+    }
+
+    public function appearancePalette(): string
+    {
+        return Appearance::normalizePalette($this->palette ?? Appearance::PALETTE_ACTUAL);
     }
 }

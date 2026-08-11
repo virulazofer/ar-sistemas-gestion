@@ -1,7 +1,8 @@
-@props(['topic'])
+@props(['topic', 'placement' => 'modal'])
 
 @php
     $help = config('help.'.$topic);
+    $side = $placement === 'side';
 @endphp
 
 @if (is_array($help))
@@ -23,13 +24,13 @@
         <div
             x-show="open"
             x-cloak
-            class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+            class="fixed inset-0 z-50 {{ $side ? 'flex justify-end bg-black/40' : 'flex items-end justify-center bg-black/40 p-4 sm:items-center' }}"
             @click.self="open = false"
             role="dialog"
             aria-modal="true"
             aria-label="Ayuda de {{ $help['title'] ?? $topic }}"
         >
-            <div class="ar-card max-h-[85vh] w-full max-w-lg overflow-y-auto p-5 shadow-lg" @click.stop>
+            <div class="ar-card {{ $side ? 'h-full max-h-full w-full max-w-md rounded-none border-y-0 border-e-0' : 'max-h-[85vh] w-full max-w-lg' }} overflow-y-auto p-5 shadow-lg" @click.stop>
                 <div class="mb-3 flex items-start justify-between gap-3">
                     <div>
                         <h2 class="text-lg font-semibold">{{ $help['title'] ?? 'Ayuda' }}</h2>

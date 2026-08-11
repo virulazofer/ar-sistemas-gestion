@@ -2,7 +2,7 @@
     <x-slot name="header">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
-                <h1 class="text-xl font-semibold">Dashboard operativo</h1>
+                <h1 class="text-xl font-semibold">Tablero operativo</h1>
                 <p class="ar-muted text-sm">Información accionable · monedas separadas · {{ $data['generated_at'] }}</p>
             </div>
             <div class="flex flex-wrap gap-2">

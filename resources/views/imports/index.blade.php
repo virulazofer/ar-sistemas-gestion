@@ -2,7 +2,10 @@
     <x-slot name="header">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
-                <h1 class="text-xl font-semibold">Importaciones</h1>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-xl font-semibold">Importaciones</h1>
+                    <x-page-help topic="imports" />
+                </div>
                 <p class="ar-muted text-sm">CSV / XLSX · vista previa · confirmación · rollback.</p>
             </div>
             @can('imports.execute')

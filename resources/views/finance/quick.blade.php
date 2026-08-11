@@ -157,7 +157,7 @@
             </div>
 
             <div class="flex justify-end gap-2 pt-2">
-                <a href="{{ route('dashboard') }}" class="ar-btn ar-btn-secondary">Dashboard</a>
+                <a href="{{ route('dashboard') }}" class="ar-btn ar-btn-secondary">Tablero</a>
                 <button type="submit" class="ar-btn ar-btn-primary">Guardar</button>
             </div>
         </form>

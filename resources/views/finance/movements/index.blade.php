@@ -1,7 +1,10 @@
 <x-app-layout>
     <x-slot name="header">
         <div class="flex items-center justify-between gap-3">
-            <h1 class="text-xl font-semibold">Movimientos</h1>
+            <div class="flex items-center gap-2">
+                <h1 class="text-xl font-semibold">Movimientos</h1>
+                <x-page-help topic="movements" />
+            </div>
             @can('movements.create')
                 <a href="{{ route('movements.quick') }}" class="ar-btn ar-btn-primary">Carga rápida</a>
             @endcan

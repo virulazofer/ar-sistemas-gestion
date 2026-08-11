@@ -1,7 +1,10 @@
 <x-app-layout>
     <x-slot name="header">
         <div>
-            <h1 class="text-xl font-semibold">Auditoría</h1>
+            <div class="flex items-center gap-2">
+                <h1 class="text-xl font-semibold">Auditoría</h1>
+                <x-page-help topic="audit" />
+            </div>
             <p class="ar-muted text-sm">Registro de acciones relevantes del sistema.</p>
         </div>
     </x-slot>

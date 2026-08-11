@@ -23,6 +23,7 @@ class UserFactory extends Factory
             'password' => static::$password ??= 'password',
             'status' => User::STATUS_ACTIVE,
             'theme' => User::THEME_LIGHT,
+            'palette' => \App\Support\Appearance::PALETTE_ACTUAL,
             'remember_token' => Str::random(10),
         ];
     }
