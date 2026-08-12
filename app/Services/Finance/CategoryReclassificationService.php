@@ -237,52 +237,93 @@ class CategoryReclassificationService
     }
 
     /**
-     * Asegura categorías de ingresos profesionales confirmados mapeadas al plan 4.2.
+     * Asegura estructura INGRESO → Servicios profesionales → {Abonos,Remotos,…} y Ventas.
+     * Remotos nunca bajo Servicios (egreso).
      *
      * @return list<array{name: string, category_id: ?int, chart_account_id: ?int, action: string}>
      */
     public function ensureProfessionalIncomeMappings(bool $apply = false): array
     {
         $incomeProf = \App\Models\ChartAccount::query()->where('code', '4.2')->first();
-        $names = ['Abonos', 'Reparaciones', 'Instalaciones', 'Remotos', 'Ventas'];
         $report = [];
 
-        foreach ($names as $name) {
-            $cat = Category::query()->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])->first();
-            $sub = Subcategory::query()->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])->first();
+        $serviciosProf = Category::query()->whereRaw('LOWER(name) = ?', ['servicios profesionales'])->first();
+        if (! $serviciosProf && $apply) {
+            $serviciosProf = Category::query()->create([
+                'name' => 'Servicios profesionales',
+                'scope' => 'professional',
+                'default_scope' => 'professional',
+                'chart_account_id' => $incomeProf?->id,
+                'is_active' => true,
+                'sort_order' => 40,
+                'excel_name' => 'Servicios profesionales',
+            ]);
+            $report[] = [
+                'name' => 'Servicios profesionales',
+                'category_id' => $serviciosProf->id,
+                'chart_account_id' => $serviciosProf->chart_account_id,
+                'action' => 'created_category',
+            ];
+        } elseif ($serviciosProf) {
+            $action = $serviciosProf->chart_account_id === $incomeProf?->id ? 'ok' : 'map_category';
+            if ($apply && $incomeProf && $action === 'map_category') {
+                $old = $serviciosProf->only(['chart_account_id', 'scope']);
+                $serviciosProf->update([
+                    'chart_account_id' => $incomeProf->id,
+                    'scope' => 'professional',
+                ]);
+                $this->audit->log('professional_income_mapped', $serviciosProf, $old, $serviciosProf->only(['chart_account_id', 'scope']), 'Servicios profesionales');
+                $action = 'mapped';
+            }
+            $report[] = [
+                'name' => 'Servicios profesionales',
+                'category_id' => $serviciosProf->id,
+                'chart_account_id' => $serviciosProf->chart_account_id,
+                'action' => $action,
+            ];
+        } else {
+            $report[] = ['name' => 'Servicios profesionales', 'category_id' => null, 'chart_account_id' => $incomeProf?->id, 'action' => 'missing'];
+        }
 
-            if (! $cat && ! $sub) {
-                $report[] = ['name' => $name, 'category_id' => null, 'chart_account_id' => $incomeProf?->id, 'action' => 'missing'];
+        $incomeSubs = ['Abonos', 'Remotos', 'Reparaciones', 'Instalaciones'];
+        foreach ($incomeSubs as $name) {
+            $sub = null;
+            if ($serviciosProf) {
+                $sub = Subcategory::query()
+                    ->where('category_id', $serviciosProf->id)
+                    ->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
+                    ->first();
+            }
+            // Compat: categoría histórica suelta (ej. Remotos) o sub en otro padre.
+            $legacyCat = Category::query()->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])->first();
+            $legacySub = Subcategory::query()->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])->first();
+
+            if (! $sub && ! $legacyCat && ! $legacySub) {
+                $report[] = ['name' => $name, 'category_id' => $serviciosProf?->id, 'chart_account_id' => $incomeProf?->id, 'action' => 'missing'];
 
                 continue;
             }
 
-            if ($cat) {
-                $action = $cat->chart_account_id === $incomeProf?->id ? 'ok' : 'map_category';
-                if ($apply && $incomeProf && $action === 'map_category') {
-                    $old = $cat->only(['chart_account_id', 'scope']);
-                    $cat->update([
-                        'chart_account_id' => $incomeProf->id,
-                        'scope' => $cat->scope === 'personal' ? 'professional' : $cat->scope,
-                    ]);
-                    $this->audit->log('professional_income_mapped', $cat, $old, $cat->only(['chart_account_id', 'scope']), "Ingreso profesional: {$name}");
-                    $action = 'mapped';
-                }
-                $report[] = [
+            if ($serviciosProf && ! $sub && $apply) {
+                $sub = Subcategory::query()->create([
+                    'category_id' => $serviciosProf->id,
                     'name' => $name,
-                    'category_id' => $cat->id,
-                    'chart_account_id' => $cat->chart_account_id,
-                    'action' => $action,
-                    'note' => $name === 'Ventas' ? 'Clasificación económica profesional; circuito comercial intacto (sin duplicar ingreso).' : null,
+                    'chart_account_id' => $incomeProf?->id,
+                    'is_active' => true,
+                    'sort_order' => 10,
+                ]);
+                $report[] = [
+                    'name' => $name.' (sub)',
+                    'category_id' => $serviciosProf->id,
+                    'chart_account_id' => $sub->chart_account_id,
+                    'action' => 'created_sub',
                 ];
-            }
-
-            if ($sub && $sub->category_id !== ($cat->id ?? null)) {
+            } elseif ($sub) {
                 $action = $sub->chart_account_id === $incomeProf?->id ? 'ok_sub' : 'map_sub';
                 if ($apply && $incomeProf && $action === 'map_sub') {
                     $old = $sub->only(['chart_account_id']);
                     $sub->update(['chart_account_id' => $incomeProf->id]);
-                    $this->audit->log('professional_income_sub_mapped', $sub, $old, $sub->only(['chart_account_id']), "Sub ingreso profesional: {$name}");
+                    $this->audit->log('professional_income_sub_mapped', $sub, $old, $sub->only(['chart_account_id']), "Sub ingreso: {$name}");
                     $action = 'mapped_sub';
                 }
                 $report[] = [
@@ -292,6 +333,92 @@ class CategoryReclassificationService
                     'action' => $action,
                 ];
             }
+
+            if ($legacyCat && $serviciosProf && strcasecmp($legacyCat->name, 'Servicios profesionales') !== 0) {
+                $action = 'legacy_category_to_sub';
+                if ($apply && $sub) {
+                    // Preview-only friendly: al aplicar, mueve movimientos de la cat suelta a sub canónica.
+                    $moved = Movement::query()->where('category_id', $legacyCat->id)->update([
+                        'category_id' => $serviciosProf->id,
+                        'subcategory_id' => $sub->id,
+                        'chart_account_id' => $incomeProf?->id ?? $legacyCat->chart_account_id,
+                    ]);
+                    $legacyCat->update(['is_active' => false, 'excel_name' => $legacyCat->excel_name ?: $legacyCat->name]);
+                    $this->audit->log('legacy_income_category_folded', $legacyCat, null, [
+                        'target_category_id' => $serviciosProf->id,
+                        'target_subcategory_id' => $sub->id,
+                        'moved' => $moved,
+                    ], "Legado {$name} → Servicios profesionales/{$name}");
+                    $action = 'folded_legacy_category';
+                }
+                $report[] = [
+                    'name' => $name,
+                    'category_id' => $legacyCat->id,
+                    'chart_account_id' => $legacyCat->chart_account_id,
+                    'action' => $action,
+                    'note' => $name === 'Remotos' ? 'Remotos = INGRESO → Servicios profesionales → Remotos (no Servicios egreso).' : null,
+                ];
+            } elseif ($legacyCat && ! $serviciosProf) {
+                $action = $legacyCat->chart_account_id === $incomeProf?->id ? 'ok' : 'map_category';
+                if ($apply && $incomeProf && $action === 'map_category') {
+                    $old = $legacyCat->only(['chart_account_id', 'scope']);
+                    $legacyCat->update([
+                        'chart_account_id' => $incomeProf->id,
+                        'scope' => $legacyCat->scope === 'personal' ? 'professional' : $legacyCat->scope,
+                    ]);
+                    $this->audit->log('professional_income_mapped', $legacyCat, $old, $legacyCat->only(['chart_account_id', 'scope']), "Ingreso profesional: {$name}");
+                    $action = 'mapped';
+                }
+                $report[] = [
+                    'name' => $name,
+                    'category_id' => $legacyCat->id,
+                    'chart_account_id' => $legacyCat->chart_account_id,
+                    'action' => $action,
+                ];
+            }
+        }
+
+        $ventas = Category::query()->whereRaw('LOWER(name) = ?', ['ventas'])->first();
+        if (! $ventas && $apply) {
+            $ventas = Category::query()->create([
+                'name' => 'Ventas',
+                'scope' => 'professional',
+                'default_scope' => 'professional',
+                'chart_account_id' => $incomeProf?->id,
+                'is_active' => true,
+                'sort_order' => 30,
+                'excel_name' => 'Ventas',
+            ]);
+            $report[] = [
+                'name' => 'Ventas',
+                'category_id' => $ventas->id,
+                'chart_account_id' => $ventas->chart_account_id,
+                'action' => 'created_category',
+                'note' => 'Clasificación económica profesional; circuito comercial intacto (sin duplicar ingreso).',
+            ];
+        } elseif ($ventas) {
+            $action = $ventas->chart_account_id === $incomeProf?->id ? 'ok' : 'map_category';
+            if ($apply && $incomeProf && $action === 'map_category') {
+                $old = $ventas->only(['chart_account_id', 'scope']);
+                $ventas->update(['chart_account_id' => $incomeProf->id, 'scope' => 'professional']);
+                $this->audit->log('professional_income_mapped', $ventas, $old, $ventas->only(['chart_account_id', 'scope']), 'Ventas');
+                $action = 'mapped';
+            }
+            $report[] = [
+                'name' => 'Ventas',
+                'category_id' => $ventas->id,
+                'chart_account_id' => $ventas->chart_account_id,
+                'action' => $action,
+                'note' => 'Clasificación económica profesional; circuito comercial intacto (sin duplicar ingreso).',
+            ];
+        } else {
+            $report[] = [
+                'name' => 'Ventas',
+                'category_id' => null,
+                'chart_account_id' => $incomeProf?->id,
+                'action' => 'missing',
+                'note' => 'Clasificación económica profesional; circuito comercial intacto (sin duplicar ingreso).',
+            ];
         }
 
         return $report;

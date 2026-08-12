@@ -7,8 +7,8 @@
             </div>
             <div class="flex flex-wrap gap-2">
                 <a href="{{ route('chart-accounts.map') }}" class="ar-btn ar-btn-secondary text-xs">Mapa</a>
-                <a href="{{ route('chart-accounts.mapping') }}" class="ar-btn ar-btn-secondary text-xs">Mapeo categorías</a>
-                <a href="{{ route('chart-accounts.unclassified') }}" class="ar-btn ar-btn-secondary text-xs">Sin clasificar</a>
+                <a href="{{ route('chart-accounts.mapping') }}" class="ar-btn ar-btn-secondary text-xs">Mapeo patrimonial</a>
+                <a href="{{ route('chart-accounts.classify') }}" class="ar-btn ar-btn-secondary text-xs">Clasificar movimientos</a>
                 <a href="{{ route('imputation-rules.index') }}" class="ar-btn ar-btn-secondary text-xs">Reglas de imputación</a>
                 @can('categories.create')
                     <a href="{{ route('chart-accounts.create') }}" class="ar-btn ar-btn-primary">Nueva cuenta</a>
@@ -30,12 +30,12 @@
     </div>
 
     @if ($unassignedMovements > 0)
-        <a href="{{ route('chart-accounts.unclassified') }}"
+        <a href="{{ route('chart-accounts.classify') }}"
            class="mb-4 block rounded border p-3 text-sm hover:opacity-90"
            style="border-color: var(--ar-danger, #b91c1c); color: var(--ar-danger, #b91c1c);">
-            <strong>{{ $unassignedMovements }}</strong> movimiento(s) posted sin cuenta contable —
-            abrir <strong>Movimientos sin clasificar</strong>
-            · cat/sub sin mapear: {{ $assistant['total_unmapped'] }}
+            <strong>{{ $unassignedMovements }}</strong> movimiento(s) sin categoría operativa —
+            abrir <strong>Clasificar movimientos</strong>
+            · mapeos patrimoniales cat/sub opcionales: {{ $assistant['total_unmapped'] }}
         </a>
     @endif
 

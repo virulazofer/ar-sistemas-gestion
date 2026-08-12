@@ -18,7 +18,9 @@
                 <a class="block text-sm" style="color: var(--ar-brand);" href="{{ route('reports.show', 'finance-income-expense') }}">Ingresos / Egresos</a>
                 <a class="block text-sm" style="color: var(--ar-brand);" href="{{ route('reports.show', 'chart-accounts') }}">Plan de cuentas (resumen)</a>
                 <a class="block text-sm" style="color: var(--ar-brand);" href="{{ route('chart-accounts.index') }}">Plan de cuentas (árbol + totales)</a>
-                <a class="block text-sm" style="color: var(--ar-brand);" href="{{ route('reports.show', ['type' => 'finance-movements', 'chart_account_id' => 'unassigned']) }}">Movimientos sin cuenta contable</a>
+                <a class="block text-sm" style="color: var(--ar-brand);" href="{{ route('reports.show', 'operational-classification') }}">Clasificación operativa (Nat/Cat/Sub/Ámbito)</a>
+                <a class="block text-sm" style="color: var(--ar-brand);" href="{{ route('reports.show', ['type' => 'finance-movements', 'chart_account_id' => 'unassigned']) }}">Movimientos sin categoría</a>
+                <a class="block text-sm" style="color: var(--ar-brand);" href="{{ route('chart-accounts.classify') }}">Clasificar movimientos</a>
             </div>
         @endcan
         @can('reports.clients')

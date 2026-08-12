@@ -2,13 +2,15 @@
     <x-slot name="header">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-2">
-                <h1 class="text-xl font-semibold">Movimientos sin clasificar</h1>
+                <h1 class="text-xl font-semibold">Clasificar movimientos</h1>
                 <x-page-help topic="chart_accounts.unclassified" />
             </div>
             <div class="flex flex-wrap gap-2">
                 <a href="{{ route('chart-accounts.index') }}" class="ar-btn ar-btn-secondary text-xs">Plan de cuentas</a>
                 <a href="{{ route('imputation-rules.index') }}" class="ar-btn ar-btn-secondary text-xs">Reglas de imputación</a>
-                <a href="{{ route('chart-accounts.mapping') }}" class="ar-btn ar-btn-secondary text-xs">Mapeo</a>
+                <a href="{{ route('chart-accounts.mapping') }}" class="ar-btn ar-btn-secondary text-xs">Mapeo patrimonial</a>
+                <a href="{{ route('chart-accounts.semantics') }}" class="ar-btn ar-btn-secondary text-xs">Dry-run 11F-8</a>
+                <a href="{{ route('reports.show', 'operational-classification') }}" class="ar-btn ar-btn-secondary text-xs">Reporte Nat/Cat/Sub</a>
             </div>
         </div>
     </x-slot>
@@ -24,14 +26,18 @@
 
     <div class="ar-card mb-4 grid gap-3 p-4 sm:grid-cols-4">
         <div><p class="ar-muted text-xs">Movimientos totales</p><p class="text-lg font-semibold tabular-nums">{{ $progress['total'] }}</p></div>
-        <div><p class="ar-muted text-xs">Clasificados</p><p class="text-lg font-semibold tabular-nums">{{ $progress['classified'] }}</p></div>
-        <div><p class="ar-muted text-xs">Pendientes</p><p class="text-lg font-semibold tabular-nums" style="color: var(--ar-danger);">{{ $progress['pending'] }}</p></div>
+        <div><p class="ar-muted text-xs">Clasificados (cat)</p><p class="text-lg font-semibold tabular-nums">{{ $progress['classified'] }}</p></div>
+        <div><p class="ar-muted text-xs">Pendientes (sin categoría)</p><p class="text-lg font-semibold tabular-nums" style="color: var(--ar-danger);">{{ $progress['pending'] }}</p></div>
         <div><p class="ar-muted text-xs">Resuelto</p><p class="text-lg font-semibold tabular-nums">{{ $progress['percent'] }}%</p></div>
     </div>
 
     <p class="ar-muted mb-3 text-sm">
-        <strong>Cuenta financiera / medio</strong> (caja, banco, tarjeta) ≠ <strong>cuenta contable</strong> (plan).
-        Ámbito Personal/Profesional es independiente de la categoría.
+        Clasificación operativa: <strong>Naturaleza → Categoría → Subcategoría</strong>.
+        Cat/sub correcta <strong>no</strong> exige cuenta contable para estar completo
+        @if (! empty($progress['missing_chart_optional']))
+            ({{ $progress['missing_chart_optional'] }} con cat OK y plan opcional pendiente).
+        @endif
+        <strong>Cuenta financiera</strong> ≠ <strong>cuenta contable</strong>. Ámbito no se modifica aquí.
     </p>
 
     <form method="GET" class="ar-card mb-4 grid gap-3 p-4 md:grid-cols-4 lg:grid-cols-6">
@@ -213,7 +219,7 @@
                             <td>{{ $m->chartAccount ? ($m->chartAccount->code.' '.$m->chartAccount->name) : 'Sin asignar' }}</td>
                             <td>{{ $m->account?->name ?? '—' }}</td>
                             <td>{{ $m->import_batch_id ? 'Importación' : ($m->source_sheet ?: 'Manual') }}</td>
-                            <td>Pendiente de cuenta contable</td>
+                            <td>Pendiente de categoría</td>
                             @can('categories.edit')
                                 <td class="min-w-[14rem]">
                                     <form method="POST" action="{{ route('chart-accounts.unclassified.classify', $m) }}" class="space-y-1">

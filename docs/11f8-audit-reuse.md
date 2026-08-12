@@ -16,12 +16,21 @@
 ## Distinciones de modelo
 
 - **Cuenta financiera** = caja/banco/billetera/tarjeta (`financial_accounts`)
-- **Cuenta contable** = plan (`chart_accounts`)
-- **Categoría / subcategoría** = clasificación operativa
+- **Cuenta contable** = plan (`chart_accounts`) — patrimonial; no copia del árbol cat/sub
+- **Naturaleza → Categoría → Subcategoría** = clasificación operativa única
 - **Ámbito** Personal/Profesional = independiente de categoría
+- Pendiente operativo = sin categoría (cat/sub OK sin plan **no** es incompleto)
+
+Ver diagrama: `docs/11f8-classification-model.md`
+
+## Dry-run (sin aplicar masa)
+
+```bash
+php artisan classification:dry-run-11f8 --export --json=exports/11f8/dry-run.json
+```
 
 ## No tocar
 
 - Reset comercial 2026-08-12
 - Reimport histórico 11E
-- Migraciones semánticas ambiguas Comida/Auto/Miranda/MYU (solo análisis + infra)
+- Aplicar reclasificación masiva sin aprobación explícita del usuario

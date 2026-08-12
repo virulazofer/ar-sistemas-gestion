@@ -8,13 +8,16 @@ use App\Models\ChartAccount;
 use App\Models\FinancialAccount;
 use App\Models\Movement;
 use App\Models\Subcategory;
+use App\Services\Finance\ApprovedTaxonomyService;
 use App\Services\Finance\CategoryReclassificationService;
 use App\Services\Finance\CategorySemanticsAnalyzer;
 use App\Services\Finance\ImputationRuleService;
+use App\Services\Finance\StructuralReclassificationPlanner;
 use App\Services\Finance\UnclassifiedMovementsService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class UnclassifiedMovementController extends Controller
 {
@@ -23,6 +26,8 @@ class UnclassifiedMovementController extends Controller
         private readonly ImputationRuleService $rules,
         private readonly CategoryReclassificationService $reclass,
         private readonly CategorySemanticsAnalyzer $semantics,
+        private readonly StructuralReclassificationPlanner $planner,
+        private readonly ApprovedTaxonomyService $taxonomy,
     ) {}
 
     public function index(Request $request): View
@@ -247,7 +252,49 @@ class UnclassifiedMovementController extends Controller
     public function semanticsReport(): View
     {
         $analysis = $this->semantics->analyzeAmbiguous();
+        $dryRun = session('classification_dry_run');
 
-        return view('finance.chart_accounts.semantics', compact('analysis'));
+        return view('finance.chart_accounts.semantics', compact('analysis', 'dryRun'));
+    }
+
+    /**
+     * Dry-run estructural 11F-8 — NUNCA aplica masa.
+     */
+    public function dryRunStructural(Request $request): RedirectResponse
+    {
+        $ensure = $request->boolean('ensure_taxonomy');
+        $report = $this->planner->dryRun(ensureTaxonomyWrite: $ensure);
+
+        return redirect()
+            ->route('chart-accounts.semantics')
+            ->with('classification_dry_run', $report)
+            ->with('status', 'Dry-run listo. No se aplicaron cambios masivos de movimientos.');
+    }
+
+    public function exportAmbiguous(Request $request): StreamedResponse|RedirectResponse
+    {
+        $report = session('classification_dry_run');
+        if (! is_array($report)) {
+            $report = $this->planner->dryRun(ensureTaxonomyWrite: false);
+        }
+
+        $format = $request->string('format')->toString() ?: 'xlsx';
+        if ($format === 'csv') {
+            return $this->planner->exportAmbiguousCsv($report);
+        }
+
+        $paths = $this->planner->writeAmbiguousExports($report);
+        $abs = storage_path('app/'.$paths['xlsx']);
+
+        return response()->download($abs, '11f8-pendientes-ambiguos.xlsx');
+    }
+
+    public function ensureTaxonomy(Request $request): RedirectResponse
+    {
+        $preview = ! $request->boolean('apply');
+        $result = $this->taxonomy->ensureCanonical(write: ! $preview);
+
+        return back()->with('taxonomy_report', $result)
+            ->with('status', $preview ? 'Vista previa taxonomía canónica (sin escribir).' : 'Taxonomía canónica asegurada (sin mover movimientos).');
     }
 }

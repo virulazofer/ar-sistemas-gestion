@@ -66,7 +66,7 @@ function makeUnclassifiedMovement(array $attrs = []): Movement
     ], $attrs));
 }
 
-test('1 alerta pendientes enlaza a movimientos sin clasificar reales', function () {
+test('1 alerta pendientes enlaza a clasificar movimientos reales', function () {
     $admin = makeAdmin();
     $this->actingAs($admin);
     makeUnclassifiedMovement(['description' => 'Telecentro']);
@@ -78,11 +78,11 @@ test('1 alerta pendientes enlaza a movimientos sin clasificar reales', function 
     $this->get(route('chart-accounts.index'))
         ->assertOk()
         ->assertSee((string) $count)
-        ->assertSee(route('chart-accounts.unclassified', absolute: false), false);
+        ->assertSee(route('chart-accounts.classify', absolute: false), false);
 
-    $this->get(route('chart-accounts.unclassified'))
+    $this->get(route('chart-accounts.classify'))
         ->assertOk()
-        ->assertSee('Movimientos sin clasificar')
+        ->assertSee('Clasificar movimientos')
         ->assertSee('Telecentro')
         ->assertSee('YouTube');
 });
@@ -121,6 +121,21 @@ test('4 asignacion individual', function () {
     ])->assertRedirect();
 
     expect($m->fresh()->chart_account_id)->toBe($leaf->id)
+        ->and($m->fresh()->category_id)->toBe($cat->id);
+});
+
+test('4b cat/sub sin cuenta contable no cuenta como pendiente', function () {
+    $admin = makeAdmin();
+    $this->actingAs($admin);
+    $cat = Category::query()->create(['name' => 'Alimentación', 'scope' => 'personal', 'is_active' => true, 'sort_order' => 1]);
+    $m = makeUnclassifiedMovement([
+        'description' => 'Compra con cat',
+        'category_id' => $cat->id,
+        'chart_account_id' => null,
+    ]);
+
+    expect(app(ChartAccountMappingService::class)->countMovementsWithoutAccount())->toBe(0)
+        ->and(app(UnclassifiedMovementsService::class)->progress()['missing_chart_optional'])->toBeGreaterThanOrEqual(1)
         ->and($m->fresh()->category_id)->toBe($cat->id);
 });
 
@@ -241,12 +256,20 @@ test('13-16 ingresos profesionales Abonos Reparaciones Instalaciones Remotos', f
     }
 
     $report = app(CategoryReclassificationService::class)->ensureProfessionalIncomeMappings(true);
-    $actions = collect($report)->pluck('action')->all();
-    expect($actions)->toContain('mapped');
+    $actions = collect($report)->pluck('action');
+    expect($actions->intersect(['created_category', 'folded_legacy_category', 'created_sub', 'mapped', 'ok', 'ok_sub'])->isNotEmpty())->toBeTrue();
+
+    $servicios = Category::query()->whereRaw('LOWER(name) = ?', ['servicios profesionales'])->first();
+    expect($servicios)->not->toBeNull()
+        ->and($servicios->chart_account_id)->toBe($prof->id);
 
     foreach (['Abonos', 'Reparaciones', 'Instalaciones', 'Remotos'] as $name) {
-        $cat = Category::query()->where('name', $name)->first();
-        expect($cat?->chart_account_id)->toBe($prof->id);
+        $sub = Subcategory::query()
+            ->where('category_id', $servicios->id)
+            ->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
+            ->first();
+        expect($sub)->not->toBeNull()
+            ->and($sub->chart_account_id)->toBe($prof->id);
     }
 });
 
@@ -365,15 +388,59 @@ test('analisis semantico no aplica cambios', function () {
     $this->get(route('chart-accounts.semantics'))->assertOk()->assertSee('Miranda');
 });
 
-test('progreso de mapeo se actualiza', function () {
+test('progreso operativo se actualiza con categoría', function () {
     $admin = makeAdmin();
     $this->actingAs($admin);
     $leaf = makeChartLeaf('5.1.5', 'Prog');
+    $cat = Category::query()->create(['name' => 'Servicios', 'scope' => 'personal', 'is_active' => true, 'sort_order' => 1]);
     $m = makeUnclassifiedMovement(['description' => 'progreso']);
     $svc = app(UnclassifiedMovementsService::class);
     $before = $svc->progress();
-    $svc->classifyOne($m, null, null, $leaf->id);
+    $svc->classifyOne($m, $cat->id, null, $leaf->id);
     $after = $svc->progress();
     expect($after['classified'])->toBe($before['classified'] + 1)
         ->and($after['pending'])->toBe($before['pending'] - 1);
+});
+
+test('dry-run estructural no aplica masa y exporta ambiguos', function () {
+    $admin = makeAdmin();
+    $this->actingAs($admin);
+    app(\App\Services\Finance\ApprovedTaxonomyService::class)->ensureCanonical(true);
+    $super = Category::query()->create(['name' => 'Super', 'scope' => 'personal', 'is_active' => true, 'sort_order' => 9]);
+    makeUnclassifiedMovement(['description' => 'Compra Super', 'category_id' => $super->id]);
+    makeUnclassifiedMovement(['description' => 'YPF nafta Auto 24', 'category_id' => Category::query()->create(['name' => 'Auto', 'scope' => 'personal', 'is_active' => true, 'sort_order' => 8])->id]);
+    makeUnclassifiedMovement(['description' => 'Auto sin detalle claro']);
+
+    $beforeCats = Movement::query()->pluck('category_id', 'id')->all();
+    $report = app(\App\Services\Finance\StructuralReclassificationPlanner::class)->dryRun(false);
+    expect($report['applied'])->toBeFalse()
+        ->and(collect($report['groups'])->pluck('grupo')->all())->toContain('Super', 'Auto', 'Remotos')
+        ->and(Movement::query()->pluck('category_id', 'id')->all())->toBe($beforeCats);
+
+    $paths = app(\App\Services\Finance\StructuralReclassificationPlanner::class)->writeAmbiguousExports($report);
+    expect($paths['count'])->toBeGreaterThanOrEqual(1)
+        ->and(\Illuminate\Support\Facades\Storage::disk('local')->exists($paths['csv']))->toBeTrue();
+
+    $this->post(route('chart-accounts.dry-run'))
+        ->assertRedirect(route('chart-accounts.semantics'))
+        ->assertSessionHas('classification_dry_run');
+});
+
+test('reporte clasificacion operativa por naturaleza cat sub ambito', function () {
+    $admin = makeAdmin();
+    $this->actingAs($admin);
+    $cat = Category::query()->create(['name' => 'Alimentación', 'scope' => 'personal', 'is_active' => true, 'sort_order' => 1]);
+    $sub = Subcategory::query()->create(['category_id' => $cat->id, 'name' => 'Supermercado', 'is_active' => true, 'sort_order' => 1]);
+    makeUnclassifiedMovement([
+        'description' => 'Disco',
+        'category_id' => $cat->id,
+        'subcategory_id' => $sub->id,
+        'chart_account_id' => null,
+    ]);
+
+    $this->get(route('reports.show', 'operational-classification'))
+        ->assertOk()
+        ->assertSee('EGRESO')
+        ->assertSee('Alimentación')
+        ->assertSee('Supermercado');
 });

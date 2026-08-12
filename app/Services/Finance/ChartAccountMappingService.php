@@ -225,11 +225,24 @@ class ChartAccountMappingService
         ];
     }
 
+    /**
+     * Contador de alerta accionable: pendientes OPERATIVOS (sin categoría).
+     * Cat/sub correcta con chart_account_id null NO cuenta como incompleto.
+     */
     public function countMovementsWithoutAccount(): int
+    {
+        return app(OperationalClassificationService::class)->countPending();
+    }
+
+    /**
+     * Métrica secundaria: tienen cat/sub pero aún sin cuenta contable (opcional/patrimonial).
+     */
+    public function countMovementsMissingOptionalChart(): int
     {
         return Movement::query()
             ->posted()
             ->whereIn('type', [MovementType::Income->value, MovementType::Expense->value])
+            ->whereNotNull('category_id')
             ->whereNull('chart_account_id')
             ->count();
     }

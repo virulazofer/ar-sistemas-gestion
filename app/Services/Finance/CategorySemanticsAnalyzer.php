@@ -8,28 +8,70 @@ use App\Models\Subcategory;
 use Illuminate\Support\Collection;
 
 /**
- * Análisis (sin aplicar) para conceptos ambiguos: Comida, Auto, Miranda, MYU.
+ * Análisis (sin aplicar) para conceptos ambiguos + nomenclatura aprobada 11F-8.
  */
 class CategorySemanticsAnalyzer
 {
+    public function __construct(
+        private readonly StructuralReclassificationPlanner $planner,
+    ) {}
+
     /**
      * @return array<string, array<string, mixed>>
      */
     public function analyzeAmbiguous(): array
     {
         return [
-            'Comida' => $this->analyzeNameVariants(['Comida', 'Comidas']),
-            'Auto' => $this->analyzeNameVariants(['Auto', 'Autos']),
-            'Miranda' => $this->analyzeNameVariants(['Miranda']),
-            'MYU' => $this->analyzeNameVariants(['MYU', 'MyU', 'Myu', 'Muebles y útiles', 'Muebles y utiles']),
+            'Comida' => $this->analyzeNameVariants(['Comida', 'Comidas'], [
+                'suggested_parent' => 'Alimentación',
+                'suggested_as' => 'subcategoría Comidas',
+                'propuesta' => 'EGRESO → Alimentación → Comidas',
+                'confidence' => 'ALTA',
+                'auto_migrate' => false,
+                'note' => 'Aprobado; dry-run listo. No aplicar masa sin confirmación.',
+            ]),
+            'Auto' => $this->analyzeAuto(),
+            'Miranda' => $this->analyzeNameVariants(['Miranda'], [
+                'suggested_parent' => 'Gastos familiares',
+                'suggested_as' => 'subcategoría Miranda',
+                'propuesta' => 'EGRESO → Gastos familiares → Miranda',
+                'confidence' => 'ALTA',
+                'auto_migrate' => false,
+                'note' => 'Aprobado usuario: Gastos familiares → Miranda.',
+            ]),
+            'MYU' => $this->analyzeNameVariants(['MYU', 'MyU', 'Myu', 'Muebles y útiles', 'Muebles y utiles'], [
+                'suggested_label' => 'Muebles y útiles',
+                'suggested_as' => 'categoría Muebles y útiles / sub MYU',
+                'propuesta' => 'EGRESO → Muebles y útiles → MYU',
+                'confidence' => 'ALTA',
+                'auto_migrate' => false,
+                'note' => 'Gasto operativo; sin módulo patrimonial completo aún.',
+            ]),
+            'Remotos' => $this->analyzeNameVariants(['Remotos'], [
+                'suggested_parent' => 'Servicios profesionales',
+                'suggested_as' => 'subcategoría Remotos (INGRESO)',
+                'propuesta' => 'INGRESO → Servicios profesionales → Remotos',
+                'confidence' => 'ALTA',
+                'auto_migrate' => false,
+                'note' => 'NO es Servicios (egreso utilities/streaming).',
+            ]),
+            'Super' => $this->analyzeNameVariants(['Super'], [
+                'suggested_parent' => 'Alimentación',
+                'suggested_as' => 'subcategoría Supermercado',
+                'propuesta' => 'EGRESO → Alimentación → Supermercado',
+                'confidence' => 'ALTA',
+                'auto_migrate' => false,
+                'note' => 'Conservar excel_name/alias Super.',
+            ]),
         ];
     }
 
     /**
      * @param  list<string>  $names
+     * @param  array<string, mixed>  $proposal
      * @return array<string, mixed>
      */
-    public function analyzeNameVariants(array $names): array
+    public function analyzeNameVariants(array $names, array $proposal = []): array
     {
         $categories = Category::query()
             ->where(function ($q) use ($names) {
@@ -66,6 +108,9 @@ class CategorySemanticsAnalyzer
             ->orderBy('movement_date')
             ->get();
 
+        $defaultProposal = $this->proposalFor($names[0], $movements);
+        $merged = array_merge($defaultProposal, $proposal);
+
         return [
             'categories' => $categories->map(fn (Category $c) => [
                 'id' => $c->id,
@@ -93,10 +138,67 @@ class CategorySemanticsAnalyzer
                 'scope' => $m->scope instanceof \BackedEnum ? $m->scope->value : (string) $m->scope,
                 'account' => $m->account?->name,
             ])->all(),
-            'proposal' => $this->proposalFor($names[0], $movements),
-            'auto_migrate' => false,
-            'reason' => 'Requiere decisión humana (11F-8 §26). Infraestructura lista; no se aplica cambio semántico automático.',
+            'proposal' => $merged,
+            'auto_migrate' => (bool) ($merged['auto_migrate'] ?? false),
+            'reason' => $merged['note'] ?? 'Dry-run 11F-8; no se aplica cambio masivo sin aprobación.',
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function analyzeAuto(): array
+    {
+        $base = $this->analyzeNameVariants(['Auto', 'Autos'], [
+            'suggested_parent' => 'Automotor',
+            'suggested_as' => 'categoría Automotor con subs por descripción',
+            'propuesta' => 'EGRESO → Automotor → (sub inequívoca)',
+            'confidence' => 'MIXTA',
+            'auto_migrate' => false,
+            'note' => 'Solo auto-aplicar si la descripción es inequívoca; resto a export ambiguos.',
+        ]);
+
+        $breakdown = [];
+        $unequivocal = 0;
+        $ambiguous = 0;
+        foreach ($base['concepts_sample'] as $row) {
+            // sample incompleto; recalcular sobre todos vía planner helper
+        }
+
+        $names = ['Auto', 'Autos'];
+        $movements = Movement::query()
+            ->posted()
+            ->where(function ($q) use ($names) {
+                $q->whereHas('category', fn ($c) => $c->where(function ($qq) {
+                    $qq->whereRaw('LOWER(name) = ?', ['auto'])->orWhereRaw('LOWER(name) = ?', ['autos']);
+                }))
+                    ->orWhereHas('subcategory', fn ($c) => $c->where(function ($qq) {
+                        $qq->whereRaw('LOWER(name) = ?', ['auto'])->orWhereRaw('LOWER(name) = ?', ['autos']);
+                    }));
+                foreach ($names as $n) {
+                    $q->orWhere('description', 'like', '%'.$n.'%');
+                }
+            })
+            ->get(['id', 'description']);
+
+        foreach ($movements as $m) {
+            $sub = $this->planner->inferAutoSubcategory((string) $m->description);
+            if ($sub === null) {
+                $ambiguous++;
+                $breakdown['(ambiguo)'] = ($breakdown['(ambiguo)'] ?? 0) + 1;
+            } else {
+                $unequivocal++;
+                $breakdown[$sub] = ($breakdown[$sub] ?? 0) + 1;
+            }
+        }
+        arsort($breakdown);
+
+        $base['proposal']['subcategory_breakdown'] = $breakdown;
+        $base['proposal']['unequivocal'] = $unequivocal;
+        $base['proposal']['ambiguous'] = $ambiguous;
+        $base['movement_count'] = $movements->count();
+
+        return $base;
     }
 
     /**
@@ -108,26 +210,29 @@ class CategorySemanticsAnalyzer
         return match (mb_strtolower($label)) {
             'comida', 'comidas' => [
                 'suggested_parent' => 'Alimentación',
-                'suggested_as' => 'subcategoría (no categoría rígida)',
-                'note' => 'Ámbito Personal/Profesional permanece independiente del nombre de categoría.',
-                'confidence' => $movements->count() > 0 ? 'MEDIA' : 'BAJA',
+                'suggested_as' => 'subcategoría Comidas',
+                'confidence' => $movements->count() > 0 ? 'ALTA' : 'BAJA',
             ],
             'auto', 'autos' => [
-                'suggested_parent' => 'Transporte / Vehículo',
-                'suggested_as' => 'categoría padre con subs: combustible, seguro, mantenimiento, patente, estacionamiento, peajes',
-                'note' => 'No mezclar automáticamente si el histórico ya distingue conceptos.',
-                'confidence' => 'MEDIA',
-                'distinct_concepts' => $movements->pluck('description')->filter()->unique()->take(40)->values()->all(),
+                'suggested_parent' => 'Automotor',
+                'confidence' => 'MIXTA',
             ],
             'miranda' => [
-                'suggested_as' => 'pendiente — no asumir significado',
-                'note' => 'Analizar conceptos/importes/ámbitos; proponer solo con alta confianza.',
-                'confidence' => 'BAJA',
+                'suggested_parent' => 'Gastos familiares',
+                'confidence' => 'ALTA',
             ],
             'myu', 'muebles y útiles', 'muebles y utiles' => [
                 'suggested_label' => 'Muebles y útiles',
-                'suggested_as' => 'gasto operativo; futura distinción gasto vs activo patrimonial sin módulo patrimonial completo aún',
-                'confidence' => 'MEDIA',
+                'confidence' => 'ALTA',
+            ],
+            'remotos' => [
+                'suggested_parent' => 'Servicios profesionales',
+                'confidence' => 'ALTA',
+            ],
+            'super' => [
+                'suggested_parent' => 'Alimentación',
+                'suggested_as' => 'Supermercado',
+                'confidence' => 'ALTA',
             ],
             default => ['confidence' => 'BAJA'],
         };

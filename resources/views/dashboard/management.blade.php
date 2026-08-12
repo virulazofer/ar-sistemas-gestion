@@ -40,7 +40,9 @@
                 <p class="mt-1 text-xs">
                     <a href="{{ route('chart-accounts.index') }}" style="color: var(--ar-brand);">Plan de cuentas (drill)</a>
                     ·
-                    <a href="{{ route('chart-accounts.unclassified') }}" style="color: var(--ar-brand);">Movs. sin cuenta contable</a>
+                    <a href="{{ route('chart-accounts.classify') }}" style="color: var(--ar-brand);">Clasificar movimientos</a>
+                    ·
+                    <a href="{{ route('reports.show', 'operational-classification') }}" style="color: var(--ar-brand);">Nat/Cat/Sub/Ámbito</a>
                 </p>
             </div>
             <x-page-help topic="management" />

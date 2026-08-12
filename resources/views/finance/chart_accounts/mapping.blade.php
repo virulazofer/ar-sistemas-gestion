@@ -2,12 +2,12 @@
     <x-slot name="header">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-2">
-                <h1 class="text-xl font-semibold">Mapeo al plan de cuentas</h1>
+                <h1 class="text-xl font-semibold">Mapeo patrimonial (plan de cuentas)</h1>
                 <x-page-help topic="chart_accounts.mapping" />
             </div>
             <div class="flex flex-wrap gap-2">
                 <a href="{{ route('chart-accounts.index') }}" class="ar-btn ar-btn-secondary">Volver</a>
-                <a href="{{ route('chart-accounts.unclassified') }}" class="ar-btn ar-btn-secondary">Sin clasificar</a>
+                <a href="{{ route('chart-accounts.classify') }}" class="ar-btn ar-btn-secondary">Clasificar movimientos</a>
                 <a href="{{ route('imputation-rules.index') }}" class="ar-btn ar-btn-secondary">Reglas de imputación</a>
                 @can('categories.create')
                     <a href="{{ route('chart-accounts.create', ['return' => 'mapping']) }}" class="ar-btn ar-btn-primary">Crear cuenta inline</a>
@@ -30,8 +30,8 @@
     </div>
 
     @if ($unassignedMovements > 0)
-        <a href="{{ route('chart-accounts.unclassified') }}" class="mb-4 block rounded border p-3 text-sm" style="border-color: var(--ar-danger, #b91c1c); color: var(--ar-danger, #b91c1c);">
-            Alerta: <strong>{{ $unassignedMovements }}</strong> movimientos sin cuenta contable — abrir listado accionable
+        <a href="{{ route('chart-accounts.classify') }}" class="mb-4 block rounded border p-3 text-sm" style="border-color: var(--ar-danger, #b91c1c); color: var(--ar-danger, #b91c1c);">
+            Alerta: <strong>{{ $unassignedMovements }}</strong> movimientos sin categoría operativa — Clasificar movimientos
         </a>
     @endif
 
@@ -67,9 +67,9 @@
         </form>
 
         <div class="ar-card space-y-3 p-4">
-            <h2 class="font-semibold">Asistente: sin cuenta asignada</h2>
-            <p class="text-sm">{{ $assistant['total_unmapped'] }} ítems (cat/sub) sin mapeo.</p>
-            <a href="{{ route('chart-accounts.unclassified') }}" class="ar-btn ar-btn-primary text-xs">Ir a movimientos sin clasificar</a>
+            <h2 class="font-semibold">Clasificar movimientos</h2>
+            <p class="text-sm">Cola operativa distinta del mapeo patrimonial. {{ $assistant['total_unmapped'] }} ítems cat/sub sin cuenta contable opcional.</p>
+            <a href="{{ route('chart-accounts.classify') }}" class="ar-btn ar-btn-primary text-xs">Ir a Clasificar movimientos</a>
             @if ($assistant['categories'])
                 <p class="text-xs font-semibold">Categorías</p>
                 <ul class="list-disc ps-5 text-sm">

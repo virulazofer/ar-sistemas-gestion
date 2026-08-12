@@ -81,7 +81,9 @@ class ReportService
         }
         if (! empty($filters['chart_account_id'])) {
             if ($filters['chart_account_id'] === 'unassigned') {
-                $query->whereNull('chart_account_id');
+                // Cola operativa: sin categoría (no exigir cuenta contable redundante).
+                $query->whereNull('category_id')
+                    ->whereIn('type', [MovementType::Income->value, MovementType::Expense->value]);
             } else {
                 $query->where('chart_account_id', (int) $filters['chart_account_id']);
             }
@@ -915,16 +917,24 @@ class ReportService
             'liability' => ['label' => 'Pasivos', 'amount_ars' => '0.00', 'amount_usd' => '0.00', 'count' => 0],
             'equity' => ['label' => 'Patrimonio', 'amount_ars' => '0.00', 'amount_usd' => '0.00', 'count' => 0],
             'result' => ['label' => 'Resultados', 'amount_ars' => '0.00', 'amount_usd' => '0.00', 'count' => 0],
-            'unassigned' => ['label' => 'Sin cuenta contable', 'amount_ars' => '0.00', 'amount_usd' => '0.00', 'count' => 0],
+            // Sin categoría operativa (no “falta mapeo redundante al plan”).
+            'unassigned' => ['label' => 'Sin clasificar (sin categoría)', 'amount_ars' => '0.00', 'amount_usd' => '0.00', 'count' => 0],
         ];
 
         foreach ($movements as $m) {
-            $rawType = $m->chartAccount?->type;
-            $type = $rawType instanceof \App\Enums\ChartAccountType
-                ? $rawType->value
-                : ($rawType ?? 'unassigned');
-            if (! isset($groups[$type])) {
+            if ($m->category_id === null) {
                 $type = 'unassigned';
+            } else {
+                $rawType = $m->chartAccount?->type;
+                $type = $rawType instanceof \App\Enums\ChartAccountType
+                    ? $rawType->value
+                    : ($rawType ?? null);
+                // Cat/sub OK sin cuenta contable: agrupar por naturaleza del movimiento, no como incompleto.
+                if ($type === null || ! isset($groups[$type])) {
+                    $type = ($m->type instanceof MovementType ? $m->type->value : (string) $m->getRawOriginal('type')) === MovementType::Income->value
+                        ? 'income'
+                        : 'expense';
+                }
             }
             $groups[$type]['amount_ars'] = Money::add($groups[$type]['amount_ars'], Money::normalize((string) $m->amount_ars));
             $groups[$type]['amount_usd'] = Money::add($groups[$type]['amount_usd'], Money::normalize((string) $m->amount_usd));
@@ -952,6 +962,86 @@ class ReportService
                 'expense_ars' => $expense,
                 'result_ars' => Money::sub($income, $expense),
                 'movements' => (string) $movements->count(),
+            ],
+        ];
+    }
+
+    /**
+     * Reporte operativo: NATURALEZA → CATEGORÍA → SUBCATEGORÍA × ÁMBITO.
+     *
+     * @param  array{date_from?: string|null, date_to?: string|null, scope?: string|null, type?: string|null}  $filters
+     * @return array{rows: list<array<string, mixed>>, totals: array<string, string>}
+     */
+    public function operationalClassification(array $filters = []): array
+    {
+        $query = Movement::query()
+            ->posted()
+            ->with(['category', 'subcategory'])
+            ->whereIn('type', [MovementType::Income->value, MovementType::Expense->value]);
+
+        if (! empty($filters['date_from'])) {
+            $query->whereDate('movement_date', '>=', $filters['date_from']);
+        }
+        if (! empty($filters['date_to'])) {
+            $query->whereDate('movement_date', '<=', $filters['date_to']);
+        }
+        if (! empty($filters['scope'])) {
+            $query->where('scope', $filters['scope']);
+        }
+        if (! empty($filters['type'])) {
+            $query->where('type', $filters['type']);
+        }
+        if (! empty($filters['category_id'])) {
+            $query->where('category_id', (int) $filters['category_id']);
+        }
+        if (! empty($filters['subcategory_id'])) {
+            $query->where('subcategory_id', (int) $filters['subcategory_id']);
+        }
+
+        $movements = $query->get();
+        $buckets = [];
+        $totalArs = '0.00';
+        $totalUsd = '0.00';
+
+        foreach ($movements as $m) {
+            $naturaleza = ($m->type instanceof MovementType ? $m->type->value : (string) $m->getRawOriginal('type')) === MovementType::Income->value
+                ? 'INGRESO'
+                : 'EGRESO';
+            $cat = $m->category?->name ?? '(sin categoría)';
+            $sub = $m->subcategory?->name ?? '(sin subcategoría)';
+            $ambito = $m->scope instanceof \BackedEnum ? $m->scope->value : (string) $m->scope;
+            $key = $naturaleza.'|'.$cat.'|'.$sub.'|'.$ambito;
+            if (! isset($buckets[$key])) {
+                $buckets[$key] = [
+                    'naturaleza' => $naturaleza,
+                    'categoria' => $cat,
+                    'subcategoria' => $sub,
+                    'ambito' => $ambito,
+                    'count' => 0,
+                    'amount_ars' => '0.00',
+                    'amount_usd' => '0.00',
+                    'category_id' => $m->category_id,
+                    'subcategory_id' => $m->subcategory_id,
+                ];
+            }
+            $buckets[$key]['count']++;
+            $buckets[$key]['amount_ars'] = Money::add($buckets[$key]['amount_ars'], Money::normalize((string) $m->amount_ars));
+            $buckets[$key]['amount_usd'] = Money::add($buckets[$key]['amount_usd'], Money::normalize((string) $m->amount_usd));
+            $totalArs = Money::add($totalArs, Money::normalize((string) $m->amount_ars));
+            $totalUsd = Money::add($totalUsd, Money::normalize((string) $m->amount_usd));
+        }
+
+        usort($buckets, function ($a, $b) {
+            return [$a['naturaleza'], $a['categoria'], $a['subcategoria'], $a['ambito']]
+                <=> [$b['naturaleza'], $b['categoria'], $b['subcategoria'], $b['ambito']];
+        });
+
+        return [
+            'rows' => array_values($buckets),
+            'totals' => [
+                'Movimientos' => (string) $movements->count(),
+                'Importe ARS' => $totalArs,
+                'Importe USD' => $totalUsd,
             ],
         ];
     }

@@ -163,6 +163,20 @@ class ReportController extends Controller
                 ['label' => 'Tipo', 'count' => 'Movimientos', 'amount_ars' => 'Importe ARS', 'amount_usd' => 'Importe USD'],
                 $this->normalizeChart($this->reports->chartAccountsSummary()),
             ],
+            'operational-classification' => [
+                'Clasificación operativa (Naturaleza / Cat / Sub / Ámbito)',
+                'reports.finance',
+                [
+                    'naturaleza' => 'Naturaleza',
+                    'categoria' => 'Categoría',
+                    'subcategoria' => 'Subcategoría',
+                    'ambito' => 'Ámbito',
+                    'count' => 'Movimientos',
+                    'amount_ars' => 'Importe ARS',
+                    'amount_usd' => 'Importe USD',
+                ],
+                $this->reports->operationalClassification($filters),
+            ],
             default => abort(404),
         };
     }

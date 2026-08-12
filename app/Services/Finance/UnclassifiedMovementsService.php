@@ -18,23 +18,18 @@ class UnclassifiedMovementsService
         private readonly AuditLogger $audit,
         private readonly ChartAccountMappingService $mapping,
         private readonly ImputationRuleService $rules,
+        private readonly OperationalClassificationService $operational,
     ) {}
 
     /**
-     * @return array{total: int, classified: int, pending: int, percent: float}
+     * Progreso operativo: NATURALEZA→CATEGORÍA→SUBCATEGORÍA.
+     * Cat/sub correcta no exige cuenta contable para contar como clasificado.
+     *
+     * @return array{total: int, classified: int, pending: int, percent: float, missing_chart_optional: int}
      */
     public function progress(): array
     {
-        $base = Movement::query()
-            ->posted()
-            ->whereIn('type', [MovementType::Income->value, MovementType::Expense->value]);
-
-        $total = (clone $base)->count();
-        $pending = (clone $base)->whereNull('chart_account_id')->count();
-        $classified = max(0, $total - $pending);
-        $percent = $total > 0 ? round(($classified / $total) * 100, 1) : 100.0;
-
-        return compact('total', 'classified', 'pending', 'percent');
+        return $this->operational->progress();
     }
 
     /**
@@ -42,10 +37,7 @@ class UnclassifiedMovementsService
      */
     public function query(array $filters = []): Builder
     {
-        $q = Movement::query()
-            ->posted()
-            ->whereIn('type', [MovementType::Income->value, MovementType::Expense->value])
-            ->whereNull('chart_account_id')
+        $q = $this->operational->pendingQuery()
             ->with(['account', 'category', 'subcategory', 'chartAccount', 'client', 'supplier']);
 
         $search = trim((string) ($filters['q'] ?? ''));
@@ -119,10 +111,7 @@ class UnclassifiedMovementsService
      */
     public function groupByPattern(int $limit = 80): array
     {
-        $rows = Movement::query()
-            ->posted()
-            ->whereIn('type', [MovementType::Income->value, MovementType::Expense->value])
-            ->whereNull('chart_account_id')
+        $rows = $this->operational->pendingQuery()
             ->with(['category', 'subcategory'])
             ->orderBy('id')
             ->get(['id', 'description', 'type', 'category_id', 'subcategory_id', 'client_id']);
@@ -187,7 +176,8 @@ class UnclassifiedMovementsService
 
         if ($chartAccountId === null && ($categoryId || $subcategoryId)) {
             $type = $movement->type instanceof \BackedEnum ? $movement->type->value : (string) $movement->getRawOriginal('type');
-            $chartAccountId = $this->mapping->resolve($categoryId, $subcategoryId, $type)['chart_account_id'];
+            $chartAccountId = $this->mapping->resolve($categoryId, $subcategoryId, $type)['chart_account_id']
+                ?? $movement->chart_account_id;
         }
 
         $movement->update([
@@ -196,7 +186,7 @@ class UnclassifiedMovementsService
             'chart_account_id' => $chartAccountId,
         ]);
 
-        $this->audit->log('movement_classified', $movement, $old, $movement->only(['category_id', 'subcategory_id', 'chart_account_id']), 'Clasificación individual');
+        $this->audit->log('movement_classified', $movement, $old, $movement->only(['category_id', 'subcategory_id', 'chart_account_id']), 'Clasificación operativa individual');
 
         return ['updated' => 1];
     }
@@ -208,10 +198,16 @@ class UnclassifiedMovementsService
     public function previewBulk(array $ids, ?int $categoryId, ?int $subcategoryId, ?int $chartAccountId): array
     {
         $ids = array_values(array_unique(array_map('intval', $ids)));
-        $movements = Movement::query()->posted()->whereIn('id', $ids)->whereNull('chart_account_id')->orderBy('id')->get();
+        // Bulk operativo: permite reclasificar aunque ya tengan cuenta contable.
+        $movements = Movement::query()->posted()->whereIn('id', $ids)->orderBy('id')->get();
         $sample = [];
         foreach ($movements->take(25) as $m) {
-            $sample[] = ['id' => $m->id, 'description' => $m->description];
+            $sample[] = [
+                'id' => $m->id,
+                'description' => $m->description,
+                'from_category_id' => $m->category_id,
+                'from_subcategory_id' => $m->subcategory_id,
+            ];
         }
 
         return [
@@ -234,12 +230,16 @@ class UnclassifiedMovementsService
         return DB::transaction(function () use ($ids, $categoryId, $subcategoryId, $chartAccountId) {
             $preview = $this->previewBulk($ids, $categoryId, $subcategoryId, $chartAccountId);
             $updated = 0;
-            $movements = Movement::query()->posted()->whereIn('id', $ids)->whereNull('chart_account_id')->lockForUpdate()->get();
+            $movements = Movement::query()->posted()->whereIn('id', $ids)->lockForUpdate()->get();
             foreach ($movements as $m) {
                 $resolvedChart = $chartAccountId;
                 if ($resolvedChart === null && ($categoryId || $subcategoryId)) {
                     $type = $m->type instanceof \BackedEnum ? $m->type->value : (string) $m->getRawOriginal('type');
                     $resolvedChart = $this->mapping->resolve($categoryId, $subcategoryId, $type)['chart_account_id'];
+                }
+                // Si no hay destino de plan, conservar el existente (no exigir mapeo redundante).
+                if ($resolvedChart === null) {
+                    $resolvedChart = $m->chart_account_id;
                 }
                 $m->update([
                     'category_id' => $categoryId ?? $m->category_id,
@@ -249,7 +249,7 @@ class UnclassifiedMovementsService
                 $updated++;
             }
 
-            $this->audit->log('movements_bulk_classified', null, $preview, ['updated' => $updated], 'Clasificación masiva');
+            $this->audit->log('movements_bulk_classified', null, $preview, ['updated' => $updated], 'Clasificación masiva operativa');
 
             return ['updated' => $updated];
         });

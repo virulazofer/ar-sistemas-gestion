@@ -497,7 +497,9 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/plan-de-cuentas/mapa', [ChartAccountController::class, 'map'])->name('chart-accounts.map');
         Route::get('/plan-de-cuentas/mapeo', [ChartAccountController::class, 'mappingTool'])->name('chart-accounts.mapping');
         Route::get('/plan-de-cuentas/movimientos-sin-clasificar', [UnclassifiedMovementController::class, 'index'])->name('chart-accounts.unclassified');
+        Route::get('/plan-de-cuentas/clasificar-movimientos', [UnclassifiedMovementController::class, 'index'])->name('chart-accounts.classify');
         Route::get('/plan-de-cuentas/analisis-semantico', [UnclassifiedMovementController::class, 'semanticsReport'])->name('chart-accounts.semantics');
+        Route::get('/plan-de-cuentas/export-ambiguos', [UnclassifiedMovementController::class, 'exportAmbiguous'])->name('chart-accounts.export-ambiguous');
         Route::get('/plan-de-cuentas/reglas-imputacion', [ImputationRuleController::class, 'index'])->name('imputation-rules.index');
     });
     Route::middleware('permission:categories.create')->group(function () {
@@ -520,6 +522,8 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/plan-de-cuentas/movimientos-sin-clasificar/{movement}', [UnclassifiedMovementController::class, 'classify'])->name('chart-accounts.unclassified.classify');
         Route::post('/plan-de-cuentas/normalizar-super', [UnclassifiedMovementController::class, 'normalizeSuper'])->name('chart-accounts.normalize-super');
         Route::post('/plan-de-cuentas/ingresos-profesionales', [UnclassifiedMovementController::class, 'ensureProfessionalIncomes'])->name('chart-accounts.professional-incomes');
+        Route::post('/plan-de-cuentas/dry-run-estructural', [UnclassifiedMovementController::class, 'dryRunStructural'])->name('chart-accounts.dry-run');
+        Route::post('/plan-de-cuentas/taxonomia-canonica', [UnclassifiedMovementController::class, 'ensureTaxonomy'])->name('chart-accounts.ensure-taxonomy');
 
         Route::post('/plan-de-cuentas/reglas-imputacion', [ImputationRuleController::class, 'store'])->name('imputation-rules.store');
         Route::put('/plan-de-cuentas/reglas-imputacion/{imputation_rule}', [ImputationRuleController::class, 'update'])->name('imputation-rules.update');
