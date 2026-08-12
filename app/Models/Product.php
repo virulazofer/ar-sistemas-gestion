@@ -120,4 +120,25 @@ class Product extends Model
     {
         return Money::sub((string) $this->qty_on_hand, (string) $this->qty_reserved, 4);
     }
+
+    /**
+     * Precio de venta del maestro. Hoy no hay columna sale_price: no inventar desde reference_cost_usd.
+     */
+    public function displaySalePrice(): ?string
+    {
+        if (array_key_exists('sale_price', $this->getAttributes()) && $this->getAttribute('sale_price') !== null) {
+            return number_format((float) $this->getAttribute('sale_price'), 2, ',', '.');
+        }
+
+        return null;
+    }
+
+    public function referenceCostUsdDisplay(): ?string
+    {
+        if ($this->reference_cost_usd === null) {
+            return null;
+        }
+
+        return number_format((float) $this->reference_cost_usd, 4, ',', '.');
+    }
 }

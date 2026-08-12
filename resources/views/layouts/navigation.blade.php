@@ -111,7 +111,6 @@
                 </button>
                 <div class="ar-side-sub" x-show="groups.inv && (drawer || !collapsed)" x-cloak>
                     @can('products.view')<a href="{{ route('products.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('products.*') ? 'is-active' : '' }}"><span class="ar-side-label">Productos</span></a>@endcan
-                    @can('stock.view')<a href="{{ route('stock.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('stock.*') ? 'is-active' : '' }}"><span class="ar-side-label">Stock / Unidades</span></a>@endcan
                     @can('equipment.view')<a href="{{ route('equipment.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('equipment.index') || request()->routeIs('equipment.create') || request()->routeIs('equipment.show') || request()->routeIs('equipment.edit') ? 'is-active' : '' }}"><span class="ar-side-label">Equipos</span></a>@endcan
                     @can('equipment.view')<a href="{{ route('equipment.types.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('equipment.types.*') ? 'is-active' : '' }}"><span class="ar-side-label">Tipos de equipo</span></a>@endcan
                     @can('purchases.view')<a href="{{ route('purchases.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('purchases.*') ? 'is-active' : '' }}"><span class="ar-side-label">Compras</span></a>@endcan

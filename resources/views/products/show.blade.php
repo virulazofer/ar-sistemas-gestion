@@ -9,6 +9,9 @@
                 @can('products.edit')
                     <a href="{{ route('products.edit', $product) }}" class="ar-btn ar-btn-secondary">Editar</a>
                 @endcan
+                @can('stock.view')
+                    <a href="{{ route('stock.units', ['product_id' => $product->id]) }}" class="ar-btn ar-btn-secondary">Ver unidades</a>
+                @endcan
                 @if ($product->tracksStock())
                     @can('stock.adjust')
                         <a href="{{ route('stock.adjust.create', $product) }}" class="ar-btn ar-btn-secondary">Ajuste</a>
@@ -41,8 +44,47 @@
         <p><span class="ar-muted">Marca/Modelo:</span> {{ $product->brand ?: '—' }} {{ $product->model }}</p>
         <p><span class="ar-muted">Ubicación:</span> {{ $product->location?->name ?: '—' }} · <span class="ar-muted">Unidad:</span> {{ $product->unit }}</p>
         <p><span class="ar-muted">Mín/Máx:</span> {{ $product->stock_min }} / {{ $product->stock_max ?? '—' }}</p>
+        <p>
+            <span class="ar-muted">Precio de venta (maestro):</span>
+            {{ $product->displaySalePrice() ?? '— (sin sale_price; se define en ventas/presupuestos)' }}
+        </p>
+        <p>
+            <span class="ar-muted">Costo referencia USD:</span>
+            {{ $product->referenceCostUsdDisplay() ?? '—' }}
+            <span class="ar-muted text-xs">(no es precio de venta)</span>
+        </p>
+        <p>
+            <span class="ar-muted">tracks_units:</span>
+            {{ $product->tracks_units ? 'Sí — unidades serializadas/individuales' : 'No — stock por cantidad' }}
+        </p>
         @if ($product->notes)<p class="ar-muted">{{ $product->notes }}</p>@endif
     </div>
+
+    @if ($product->tracks_units)
+        <div class="ar-card mb-4 overflow-x-auto">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3" style="border-color: var(--ar-border);">
+                <h2 class="font-semibold">Unidades</h2>
+                @can('stock.view')
+                    <a href="{{ route('stock.units', ['product_id' => $product->id]) }}" class="text-sm" style="color: var(--ar-brand);">Ver todas las unidades →</a>
+                @endcan
+            </div>
+            <table class="ar-table">
+                <thead><tr><th>Código</th><th>Serial</th><th>Condición</th><th>Estado</th></tr></thead>
+                <tbody>
+                    @forelse ($units as $unit)
+                        <tr>
+                            <td>{{ $unit->internal_code }}</td>
+                            <td>{{ $unit->manufacturer_serial ?: '—' }}</td>
+                            <td>{{ $unit->condition instanceof \BackedEnum ? $unit->condition->value : $unit->condition }}</td>
+                            <td>{{ $unit->status instanceof \BackedEnum ? $unit->status->value : $unit->status }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="4" class="ar-muted py-4 text-center">Sin unidades cargadas.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    @endif
 
     @if ($product->tracksStock())
         <div class="mb-4 grid gap-4 lg:grid-cols-2">

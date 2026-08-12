@@ -260,6 +260,9 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/stock', [StockController::class, 'index'])
         ->middleware('permission:stock.view')
         ->name('stock.index');
+    Route::get('/stock/unidades', [StockController::class, 'units'])
+        ->middleware('permission:stock.view')
+        ->name('stock.units');
     Route::get('/stock/movimientos', [StockController::class, 'movements'])
         ->middleware('permission:stock.view')
         ->name('stock.movements');
@@ -496,6 +499,7 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/plan-de-cuentas/mapeo/aplicar', [ChartAccountController::class, 'applyMapping'])->name('chart-accounts.mapping.apply');
         Route::get('/plan-de-cuentas/{chart_account}/editar', [ChartAccountController::class, 'edit'])->name('chart-accounts.edit');
         Route::put('/plan-de-cuentas/{chart_account}', [ChartAccountController::class, 'update'])->name('chart-accounts.update');
+        Route::delete('/plan-de-cuentas/{chart_account}', [ChartAccountController::class, 'destroy'])->name('chart-accounts.destroy');
     });
 
     Route::middleware('permission:users.create')->group(function () {

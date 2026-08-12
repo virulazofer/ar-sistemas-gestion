@@ -37,8 +37,9 @@ return [
         'summary' => 'Cajas, bancos, billeteras y tarjetas donde vive el dinero.',
         'bullets' => [
             'Tipos: Efectivo, Banco, Billetera, Tarjeta, Otra.',
-            'CBU/CVU = 22 dígitos; CUIT uniforme. Tarjetas: last4/marca/titular — sin CVV ni PAN.',
-            'Por defecto solo se listan activas; usá «Ver inactivas».',
+            'CBU/CVU = 22 dígitos; CUIT uniforme (validador central).',
+            'Tarjetas: número con Luhn (solo se guarda last4), vencimiento; nunca CVV/CVC ni PAN.',
+            'Por defecto solo se listan activas (sin columna Estado); usá «Ver inactivas».',
             'Los saldos se recalculan desde movimientos confirmados.',
         ],
     ],
@@ -48,10 +49,10 @@ return [
         'bullets' => [
             'Categoría ≠ cuenta financiera (caja/banco) y ≠ cuenta del plan contable por sí sola.',
             'Expandí una categoría para ver subcategorías y totales del período.',
-            'El detalle permite filtros de fechas y desglose por subcategoría.',
+            'Detalle: fechas, ámbito, cuenta financiera, búsqueda y paginación (30; no hay límite silencioso de 10).',
         ],
         'diagram' => "Dimensiones de un movimiento\n[Fecha] [Ámbito] [Descripción]\n[Categoría → Subcategoría] → mapea a [Cuenta contable]\n[Importe] en [Cuenta financiera]",
-        'flow' => 'Listado expandible → clic categoría/sub → filtrá período → movimientos.',
+        'flow' => 'Listado expandible → clic categoría/sub → filtrá período/ámbito/FA → movimientos.',
     ],
     'exchange_rates' => [
         'title' => 'Cotizaciones',
@@ -65,17 +66,18 @@ return [
         'flow' => 'Filtrá rango → preview backfill → confirmar → el histórico queda disponible para valuación.',
     ],
     'clients_cc_opening' => [
-        'title' => 'Apertura manual de CC',
-        'summary' => 'Saldo inicial auditado (AJUSTE/APERTURA) sin borrar movimientos previos.',
+        'title' => 'Establecer saldo de apertura',
+        'summary' => 'Saldo inicial auditado (AJUSTE/APERTURA) sin borrar movimientos previos ni exigir comprobante.',
         'bullets' => [
-            'Saldo positivo (presentación) = nos deben (rojo).',
+            'Vista previa: positivo = A cobrar (nos deben); negativo = A favor del cliente.',
             'Opcional: control_cc_desde para acotar el timeline.',
+            'Tras un reset comercial los saldos parten en 0; la apertura es explícita.',
             'Requiere permiso de regularización.',
         ],
     ],
     'equipment_sale' => [
         'title' => 'Venta de equipos',
-        'summary' => 'Vender un equipo armado con margen % sobre costo, vía Ventas.',
+        'summary' => 'Vender un equipo armado con margen % sobre costo, vía Ventas (sin módulo duplicado).',
         'bullets' => [
             'Precio sugerido = costo histórico × (1 + margen%).',
             'No re-consume componentes al vender.',
@@ -123,15 +125,15 @@ return [
         ],
     ],
     'stock' => [
-        'title' => 'Stock',
-        'summary' => 'Existencias físicas valorizadas por FIFO histórico.',
+        'title' => 'Stock / Unidades',
+        'summary' => 'Existencias físicas y unidades trackeadas (acceso desde Productos, no menú primario).',
         'bullets' => [
             'Los ingresos normales vienen de Compras.',
             'Los consumos usan FIFO y no deben editarse a mano el saldo.',
             'Ajustes, reservas y consumos se operan desde la ficha del producto.',
-            'Reconstruir solo para usuarios autorizados y con cuidado.',
+            'tracks_units: unidades individuales en /stock/unidades.',
         ],
-        'flow' => 'Sin productos: creá uno en Maestros → Productos. Luego comprá o ajustá desde la ficha.',
+        'flow' => 'Productos → clic en Stock o «Ver unidades» → operar desde la ficha.',
     ],
     'work_orders' => [
         'title' => 'Órdenes de trabajo',
@@ -143,10 +145,12 @@ return [
     ],
     'subscriptions' => [
         'title' => 'Abonos',
-        'summary' => 'Cargos recurrentes a clientes.',
+        'summary' => 'Cargos recurrentes a clientes (CHARGE), no ingresos de caja.',
         'bullets' => [
-            'La generación periódica crea movimientos en cuenta corriente.',
+            'La generación periódica crea un cargo en CC (aumenta deuda), no un ingreso financiero.',
+            'El dinero entra recién al cobrar (recibo / carga rápida con Aplicar a CC).',
             'No mueve stock por sí sola.',
+            'Podés crear el primer abono desde cero desde el vacío.',
         ],
     ],
     'quotations' => [
@@ -160,14 +164,14 @@ return [
     ],
     'chart_accounts' => [
         'title' => 'Plan de cuentas',
-        'summary' => 'Jerarquía contable (Activo/Pasivo/…); distinta de categorías y de cajas.',
+        'summary' => 'Jerarquía contable (Activo/Pasivo/…); distinta de categorías, cajas y CC.',
         'bullets' => [
             'Árbol con totales reales de movimientos posted.',
             'Alerta roja si hay movimientos sin cuenta → asistente de mapeo.',
-            'Alta/edición con padre, tipo y vista de impacto (“usado por”).',
+            'Alta/edición con padre, tipo, impacto y eliminación real (reasignar / sin asignar / cancelar).',
             'Documentación: docs/plan-de-cuentas.md.',
         ],
-        'diagram' => "Cuenta financiera ≠ Categoría ≠ Cuenta contable\nCaja/Banco/Tarjeta | Alimentación/Servicios | 5.1 Gastos personales",
+        'diagram' => "Movimiento → Cat/Sub → Mapeo → Cuenta contable → Reportes\nCuenta financiera ≠ Categoría ≠ Plan ≠ CC",
     ],
     'chart_accounts.mapping' => [
         'title' => 'Mapeo categorías → plan',
@@ -184,7 +188,8 @@ return [
         'title' => 'Movimientos',
         'summary' => 'Historial de ingresos, egresos y transferencias entre cuentas.',
         'bullets' => [
-            'Columnas: Fecha | Categoría | Descripción | Ámbito | Cuenta | Importe.',
+            'Columnas: Fecha | Cuenta financiera | Descripción | Ámbito | Cuenta contable | Importe.',
+            'Cuenta financiera = caja/banco; cuenta contable = plan; categoría bajo la descripción.',
             'Colores semánticos en el importe (sin cambiar signos guardados).',
             'Un movimiento anulado deja de afectar saldos.',
         ],
@@ -192,11 +197,12 @@ return [
     ],
     'products' => [
         'title' => 'Productos',
-        'summary' => 'Catálogo de ítems físicos o de servicio.',
+        'summary' => 'Catálogo de ítems físicos o de servicio (entrada principal de Inventario).',
         'bullets' => [
-            'Columnas: SKU | Familia | Nombre | Stock.',
-            'Sin precio de venta en maestro (se define en documentos comerciales).',
-            'Baja masiva: elimina si no hay relaciones; si hay, archiva.',
+            'Columnas: SKU | Familia | Nombre | Stock | Precio | acciones.',
+            'Precio de venta: hoy no hay sale_price (no se muestra el costo como precio).',
+            'Stock clickeable → unidades; «Ver todas las unidades» en el listado.',
+            'Baja masiva con motivo: elimina si no hay relaciones; si hay, archiva.',
         ],
     ],
     'equipment' => [

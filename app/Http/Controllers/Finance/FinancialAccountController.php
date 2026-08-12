@@ -8,6 +8,7 @@ use App\Models\Currency;
 use App\Models\FinancialAccount;
 use App\Rules\CbuCvu;
 use App\Rules\Cuit;
+use App\Rules\Luhn;
 use App\Services\AuditLogger;
 use App\Services\Finance\BalanceService;
 use Illuminate\Http\RedirectResponse;
@@ -49,15 +50,14 @@ class FinancialAccountController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $data = $this->validated($request);
-
-        if (! empty($data['card_pan_full'] ?? null)) {
+        if ($request->filled('card_pan_full')) {
             $this->audit->log('account_card_pan_attempt', null, null, [
-                'name' => $data['name'] ?? null,
+                'name' => $request->input('name'),
                 'note' => 'Se intentó cargar PAN completo; no se almacena. Usar solo last4.',
             ], 'Intento de cargar PAN completo en cuenta tarjeta');
-            unset($data['card_pan_full']);
         }
+
+        $data = $this->validated($request);
 
         $account = FinancialAccount::query()->create([
             ...$data,
@@ -83,15 +83,14 @@ class FinancialAccountController extends Controller
 
     public function update(Request $request, FinancialAccount $financial_account): RedirectResponse
     {
-        $data = $this->validated($request, updating: true);
-
-        if (! empty($data['card_pan_full'] ?? null)) {
+        if ($request->filled('card_pan_full')) {
             $this->audit->log('account_card_pan_attempt', $financial_account, null, [
                 'account_id' => $financial_account->id,
                 'note' => 'Se intentó cargar PAN completo; no se almacena.',
             ], 'Intento de cargar PAN completo en cuenta tarjeta');
-            unset($data['card_pan_full']);
         }
+
+        $data = $this->validated($request, updating: true);
 
         $old = $financial_account->only([
             'name', 'type', 'status', 'description', 'cbu_cvu', 'cuit', 'card_last4', 'card_brand', 'card_holder',
@@ -121,11 +120,12 @@ class FinancialAccountController extends Controller
             'status' => ['required', Rule::in(['active', 'inactive'])],
             'cbu_cvu' => ['nullable', 'string', 'max:32', new CbuCvu],
             'cuit' => ['nullable', 'string', 'max:20', new Cuit],
-            'card_last4' => [$isCard ? 'nullable' : 'nullable', 'digits:4'],
+            'card_number' => [$isCard ? 'nullable' : 'prohibited', 'string', 'max:32', new Luhn],
+            'card_last4' => ['nullable', 'digits:4'],
             'card_brand' => ['nullable', 'string', 'max:40'],
             'card_holder' => ['nullable', 'string', 'max:120'],
-            'card_expiry_month' => ['nullable', 'integer', 'min:1', 'max:12'],
-            'card_expiry_year' => ['nullable', 'integer', 'min:2020', 'max:2100'],
+            'card_expiry_month' => [$isCard ? 'required' : 'nullable', 'integer', 'min:1', 'max:12'],
+            'card_expiry_year' => [$isCard ? 'required' : 'nullable', 'integer', 'min:2020', 'max:2100'],
             'card_pan_full' => ['nullable', 'string', 'max:32'], // nunca se guarda
         ];
 
@@ -137,11 +137,32 @@ class FinancialAccountController extends Controller
             // CBU/CVU recomendado pero no obligatorio para cuentas históricas
         }
 
+        // Rechazar cualquier intento de enviar CVV/CVC
+        foreach (['cvv', 'cvc', 'card_cvv', 'card_cvc', 'security_code'] as $forbidden) {
+            if ($request->filled($forbidden)) {
+                abort(422, 'CVV/CVC no está permitido.');
+            }
+        }
+
         $data = $request->validate($rules);
         $data['cbu_cvu'] = CbuCvu::normalize($data['cbu_cvu'] ?? null);
         $data['cuit'] = Cuit::normalize($data['cuit'] ?? null);
 
-        if (! $isCard) {
+        if ($isCard) {
+            $fromNumber = Luhn::last4($data['card_number'] ?? null);
+            if ($fromNumber) {
+                $data['card_last4'] = $fromNumber;
+            }
+            // Expiry: reject clearly expired cards (end of expiry month)
+            $month = (int) $data['card_expiry_month'];
+            $year = (int) $data['card_expiry_year'];
+            $end = \Carbon\Carbon::create($year, $month, 1)->endOfMonth();
+            if ($end->lt(now()->startOfDay())) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'card_expiry_month' => 'La tarjeta está vencida.',
+                ]);
+            }
+        } else {
             $data['card_last4'] = null;
             $data['card_brand'] = null;
             $data['card_holder'] = null;
@@ -149,7 +170,7 @@ class FinancialAccountController extends Controller
             $data['card_expiry_year'] = null;
         }
 
-        unset($data['card_pan_full']);
+        unset($data['card_pan_full'], $data['card_number']);
 
         return $data;
     }

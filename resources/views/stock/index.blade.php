@@ -10,6 +10,7 @@
                 @can('products.view')
                     <a href="{{ route('products.index') }}" class="ar-btn ar-btn-secondary">Productos</a>
                 @endcan
+                <a href="{{ route('stock.units', array_filter(['product_id' => $productId ?? null])) }}" class="ar-btn ar-btn-secondary">Unidades</a>
                 <a href="{{ route('stock.movements') }}" class="ar-btn ar-btn-secondary">Historial</a>
                 @can('stock.rebuild')
                     <a href="{{ route('stock.rebuild.form') }}" class="ar-btn ar-btn-secondary">Reconstruir</a>

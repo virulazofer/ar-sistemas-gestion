@@ -77,8 +77,11 @@ class ProductController extends Controller
             : ['qty' => '0', 'value_ars' => '0.00', 'value_usd' => '0.00', 'lots' => 0];
         $lots = $product->lots()->with('currency')->latest('received_at')->limit(20)->get();
         $movements = $product->inventoryMovements()->with('user')->latest('id')->limit(20)->get();
+        $units = $product->tracks_units
+            ? $product->units()->latest('id')->limit(50)->get()
+            : collect();
 
-        return view('products.show', compact('product', 'snapshot', 'value', 'lots', 'movements'));
+        return view('products.show', compact('product', 'snapshot', 'value', 'lots', 'movements', 'units'));
     }
 
     public function edit(Product $product): View
@@ -104,9 +107,10 @@ class ProductController extends Controller
         $data = $request->validate([
             'ids' => ['required', 'array', 'min:1'],
             'ids.*' => ['integer', 'exists:products,id'],
+            'reason' => ['required', 'string', 'min:3', 'max:500'],
         ]);
 
-        $result = $this->products->bulkDeleteOrArchive($data['ids']);
+        $result = $this->products->bulkDeleteOrArchive($data['ids'], $data['reason']);
 
         return redirect()
             ->route('products.index')

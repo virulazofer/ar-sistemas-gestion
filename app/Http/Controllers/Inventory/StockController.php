@@ -19,16 +19,42 @@ class StockController extends Controller
         private readonly StockBalanceService $balances,
     ) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
+        $productId = $request->integer('product_id') ?: null;
+
         $products = Product::query()
             ->where('type', 'physical')
             ->with(['category', 'location'])
+            ->when($productId, fn ($q) => $q->where('id', $productId))
             ->orderBy('name')
-            ->paginate(30);
-        $value = $this->balances->inventoryValue();
+            ->paginate(30)
+            ->withQueryString();
+        $value = $this->balances->inventoryValue($productId);
 
-        return view('stock.index', compact('products', 'value'));
+        return view('stock.index', compact('products', 'value', 'productId'));
+    }
+
+    public function units(Request $request): View
+    {
+        $productId = $request->integer('product_id') ?: null;
+        $q = trim((string) $request->get('q', ''));
+
+        $units = \App\Models\InventoryUnit::query()
+            ->with(['product'])
+            ->when($productId, fn ($query) => $query->where('product_id', $productId))
+            ->when($q !== '', fn ($query) => $query->where(function ($inner) use ($q) {
+                $inner->where('internal_code', 'like', "%{$q}%")
+                    ->orWhere('manufacturer_serial', 'like', "%{$q}%")
+                    ->orWhere('notes', 'like', "%{$q}%");
+            }))
+            ->orderByDesc('id')
+            ->paginate(40)
+            ->withQueryString();
+
+        $product = $productId ? Product::query()->find($productId) : null;
+
+        return view('stock.units', compact('units', 'product', 'productId', 'q'));
     }
 
     public function movements(Request $request): View

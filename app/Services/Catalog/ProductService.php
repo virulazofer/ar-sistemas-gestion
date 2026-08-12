@@ -58,11 +58,12 @@ class ProductService
      * @param  list<int>  $ids
      * @return array{deleted: int, archived: int, skipped: int}
      */
-    public function bulkDeleteOrArchive(array $ids): array
+    public function bulkDeleteOrArchive(array $ids, ?string $reason = null): array
     {
         $deleted = 0;
         $archived = 0;
         $skipped = 0;
+        $reason = $reason !== null ? trim($reason) : null;
 
         foreach ($ids as $id) {
             $product = Product::query()->find($id);
@@ -80,12 +81,14 @@ class ProductService
                 || DB::table('purchase_items')->where('product_id', $product->id)->exists()
                 || DB::table('equipment_components')->where('product_id', $product->id)->exists();
 
+            $meta = ['id' => $product->id, 'reason' => $reason];
+
             if ($hasRelations) {
                 $product->update(['status' => Product::STATUS_INACTIVE]);
-                $this->audit->log('product_archived', $product, null, ['id' => $product->id], 'Producto archivado (relaciones)');
+                $this->audit->log('product_archived', $product, null, $meta, 'Producto archivado (relaciones)');
                 $archived++;
             } else {
-                $this->audit->log('product_deleted', $product, $product->toArray(), null, 'Producto eliminado');
+                $this->audit->log('product_deleted', $product, $product->toArray(), $meta, 'Producto eliminado');
                 $product->delete();
                 $deleted++;
             }

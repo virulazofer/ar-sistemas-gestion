@@ -10,7 +10,7 @@
                     <a href="{{ route('clients.edit', $client) }}" class="ar-btn ar-btn-secondary">Editar</a>
                 @endcan
                 @can('clients.regularize')
-                    <a href="{{ route('clients.ledger.opening.create', $client) }}" class="ar-btn ar-btn-secondary">Apertura CC</a>
+                    <a href="{{ route('clients.ledger.opening.create', $client) }}" class="ar-btn ar-btn-secondary">Establecer saldo de apertura</a>
                 @endcan
                 @can('clients.create')
                     <a href="{{ route('clients.ledger.adjustment.create', $client) }}" class="ar-btn ar-btn-secondary">Ajuste</a>

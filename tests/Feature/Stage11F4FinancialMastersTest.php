@@ -216,6 +216,8 @@ test('cuenta financiera valida CBU CUIT y tarjeta sin CVV', function () {
         'card_last4' => '4242',
         'card_brand' => 'Visa',
         'card_holder' => 'ACME SA',
+        'card_expiry_month' => 12,
+        'card_expiry_year' => 2030,
         'card_pan_full' => '4111111111111111',
     ])->assertRedirect();
 
@@ -244,7 +246,8 @@ test('listado movimientos columnas y colores semánticos', function () {
 
     $this->get(route('movements.index'))
         ->assertOk()
-        ->assertSee('Categoría')
+        ->assertSee('Cuenta financiera')
+        ->assertSee('Cuenta contable')
         ->assertSee('Descripción')
         ->assertSee('semantic-amount')
         ->assertSee('ingreso semántico');
@@ -299,9 +302,13 @@ test('productos columnas sin precio y bulk archive', function () {
         ->assertSee('SKU')
         ->assertSee('Familia')
         ->assertSee('Stock')
-        ->assertSee('Columna Precio omitida');
+        ->assertSee('Precio')
+        ->assertSee('sale_price');
 
-    $this->post(route('products.bulk-destroy'), ['ids' => [$orphan->id, $kept->id]])
+    $this->post(route('products.bulk-destroy'), [
+        'ids' => [$orphan->id, $kept->id],
+        'reason' => 'Limpieza 11F-6',
+    ])
         ->assertRedirect();
 
     expect(Product::query()->find($orphan->id))->toBeNull()

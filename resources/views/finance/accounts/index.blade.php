@@ -24,7 +24,6 @@
                     <th>Tipo</th>
                     <th>Moneda</th>
                     <th>CBU/CVU / Tarjeta</th>
-                    <th>Estado</th>
                     <th class="text-right">Saldo</th>
                     <th></th>
                 </tr>
@@ -39,12 +38,14 @@
                             @if ($account->type->value === 'credit_card')
                                 {{ $account->card_brand ?: 'Tarjeta' }} ·····{{ $account->card_last4 ?: '????' }}
                                 @if ($account->card_holder)<br>{{ $account->card_holder }}@endif
+                                @if ($account->card_expiry_month && $account->card_expiry_year)
+                                    <br>{{ str_pad((string) $account->card_expiry_month, 2, '0', STR_PAD_LEFT) }}/{{ $account->card_expiry_year }}
+                                @endif
                             @else
                                 {{ $account->cbu_cvu ?: '—' }}
                                 @if ($account->cuit)<br>CUIT {{ \App\Rules\Cuit::format($account->cuit) }}@endif
                             @endif
                         </td>
-                        <td>{{ $account->status }}</td>
                         <td class="text-right">{{ number_format((float) $account->computed_balance, 2, ',', '.') }}</td>
                         <td class="text-right">
                             @can('accounts.edit')
@@ -53,10 +54,10 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="7" class="ar-muted py-6 text-center">Sin cuentas{{ $showInactive ? '' : ' activas' }}.</td></tr>
+                    <tr><td colspan="6" class="ar-muted py-6 text-center">Sin cuentas{{ $showInactive ? '' : ' activas' }}.</td></tr>
                 @endforelse
             </tbody>
         </table>
     </div>
-    <p class="ar-muted mt-3 text-xs">El saldo no es editable: se calcula desde movimientos confirmados. Las tarjetas no almacenan CVV ni PAN completo.</p>
+    <p class="ar-muted mt-3 text-xs">El saldo no es editable: se calcula desde movimientos confirmados. Las tarjetas no almacenan CVV ni PAN completo (sin CVV). Listado por defecto: solo activas.</p>
 </x-app-layout>

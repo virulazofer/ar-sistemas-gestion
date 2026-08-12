@@ -36,10 +36,10 @@
             <thead>
                 <tr>
                     <th>Fecha</th>
-                    <th>Categoría</th>
+                    <th>Cuenta financiera</th>
                     <th>Descripción</th>
                     <th>Ámbito</th>
-                    <th>Cuenta</th>
+                    <th>Cuenta contable</th>
                     <th class="text-right">Importe</th>
                 </tr>
             </thead>
@@ -51,13 +51,25 @@
                             (string) $movement->type->signedMultiplier()
                         );
                         $amountClass = \App\Support\UiSemantics::cssClass($signedDisplay, \App\Support\UiSemantics::MODE_RESULT);
+                        $chartLabel = $movement->chartAccount
+                            ? trim(($movement->chartAccount->code ?? '').' '.($movement->chartAccount->name ?? ''))
+                            : '—';
+                        $catHint = $movement->category?->name;
+                        if ($movement->subcategory) {
+                            $catHint = ($catHint ? $catHint.' / ' : '').$movement->subcategory->name;
+                        }
                     @endphp
                     <tr>
                         <td><a href="{{ route('movements.show', $movement) }}" style="color: var(--ar-brand);">{{ $movement->movement_date?->format('d/m/Y') }}</a></td>
-                        <td>{{ $movement->category?->name ?? '—' }}{{ $movement->subcategory ? ' / '.$movement->subcategory->name : '' }}</td>
-                        <td>{{ $movement->description ?: '—' }}</td>
-                        <td>{{ $movement->scope->label() }}</td>
                         <td>{{ $movement->account?->name }}</td>
+                        <td>
+                            {{ $movement->description ?: '—' }}
+                            @if ($catHint)
+                                <div class="ar-muted text-xs">Cat: {{ $catHint }}</div>
+                            @endif
+                        </td>
+                        <td>{{ $movement->scope->label() }}</td>
+                        <td class="text-xs">{{ $chartLabel }}</td>
                         <td class="text-right {{ $amountClass }}">
                             {{ number_format((float) $signedDisplay, 2, ',', '.') }} {{ $movement->account?->currency?->code }}
                         </td>
@@ -66,6 +78,11 @@
             </tbody>
         </table>
     </div>
-    <p class="ar-muted mt-2 text-xs">Colores semánticos solo en presentación (ingreso verde / egreso rojo). El signo almacenado en DB no se modifica.</p>
+    <p class="ar-muted mt-2 text-xs">
+        <strong>Cuenta financiera</strong> = caja/banco/tarjeta donde vive el dinero.
+        <strong>Cuenta contable</strong> = plan de cuentas (mapeo).
+        La categoría operativa aparece bajo la descripción.
+        Colores semánticos solo en presentación (ingreso verde / egreso rojo; en CC: rojo = nos deben). El signo en DB no se modifica.
+    </p>
     <div class="mt-4">{{ $movements->links() }}</div>
 </x-app-layout>

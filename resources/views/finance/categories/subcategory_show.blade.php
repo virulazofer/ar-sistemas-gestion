@@ -23,7 +23,28 @@
             <label class="ar-label">Hasta</label>
             <input type="date" name="to" class="ar-input" value="{{ $to->format('Y-m-d') }}">
         </div>
-        <button class="ar-btn ar-btn-secondary">Filtrar período</button>
+        <div>
+            <label class="ar-label">Ámbito</label>
+            <select name="scope" class="ar-input">
+                <option value="">Todos</option>
+                <option value="personal" @selected(($filters['scope'] ?? '') === 'personal')>Personal</option>
+                <option value="professional" @selected(($filters['scope'] ?? '') === 'professional')>Profesional</option>
+            </select>
+        </div>
+        <div>
+            <label class="ar-label">Cuenta financiera</label>
+            <select name="financial_account_id" class="ar-input">
+                <option value="">Todas</option>
+                @foreach (($filters['accounts'] ?? []) as $fa)
+                    <option value="{{ $fa->id }}" @selected((int) ($filters['financial_account_id'] ?? 0) === (int) $fa->id)>{{ $fa->name }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div class="min-w-[180px] flex-1">
+            <label class="ar-label">Buscar</label>
+            <input type="search" name="q" class="ar-input" value="{{ $filters['q'] ?? '' }}" placeholder="Descripción…">
+        </div>
+        <button class="ar-btn ar-btn-secondary">Filtrar</button>
     </form>
 
     <div class="mb-4 grid gap-4 sm:grid-cols-3">

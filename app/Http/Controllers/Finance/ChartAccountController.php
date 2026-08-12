@@ -12,6 +12,7 @@ use App\Services\AuditLogger;
 use App\Services\Finance\ChartAccountMappingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -166,11 +167,16 @@ class ChartAccountController extends Controller
     public function edit(ChartAccount $chart_account): View
     {
         $usage = $this->usage($chart_account);
+        $chart_account->loadCount('children');
 
         return view('finance.chart_accounts.edit', [
             'account' => $chart_account,
             'types' => ChartAccountType::cases(),
             'parents' => ChartAccount::query()->where('id', '!=', $chart_account->id)->orderBy('code')->get(),
+            'reassignTargets' => ChartAccount::query()
+                ->where('id', '!=', $chart_account->id)
+                ->orderBy('code')
+                ->get(),
             'usage' => $usage,
         ]);
     }
@@ -188,8 +194,97 @@ class ChartAccountController extends Controller
         return redirect()->route('chart-accounts.index')->with('status', 'Cuenta actualizada.');
     }
 
+    public function destroy(Request $request, ChartAccount $chart_account): RedirectResponse
+    {
+        $data = $request->validate([
+            'disposition' => ['required', Rule::in(['reassign', 'unassign', 'cancel'])],
+            'reassign_to' => [
+                'nullable',
+                'integer',
+                Rule::exists('chart_accounts', 'id')->where(fn ($q) => $q->where('id', '!=', $chart_account->id)),
+            ],
+            'children_action' => ['nullable', Rule::in(['reparent', 'block'])],
+        ]);
+
+        if ($data['disposition'] === 'cancel') {
+            return back()->with('status', 'Eliminación cancelada.');
+        }
+
+        if ($data['disposition'] === 'reassign' && empty($data['reassign_to'])) {
+            return back()->withErrors(['reassign_to' => 'Elegí la cuenta contable de destino.']);
+        }
+
+        $childrenCount = $chart_account->children()->count();
+        $childrenAction = $data['children_action'] ?? 'reparent';
+        if ($childrenCount > 0 && $childrenAction === 'block') {
+            return back()->withErrors(['children_action' => 'Esta cuenta tiene hijas. Reasigná o reparentá antes de eliminar.']);
+        }
+
+        $targetId = $data['disposition'] === 'reassign' ? (int) $data['reassign_to'] : null;
+        if ($targetId !== null && $this->isDescendant($chart_account, $targetId)) {
+            return back()->withErrors(['reassign_to' => 'No se puede reasignar a una cuenta hija de la que se elimina.']);
+        }
+
+        $usage = $this->usage($chart_account);
+        $snapshot = $chart_account->toArray();
+
+        DB::transaction(function () use ($chart_account, $targetId, $childrenCount, $usage, $snapshot) {
+            if ($childrenCount > 0) {
+                $newParent = $targetId ?? $chart_account->parent_id;
+                ChartAccount::query()
+                    ->where('parent_id', $chart_account->id)
+                    ->update(['parent_id' => $newParent]);
+            }
+
+            Category::query()->where('chart_account_id', $chart_account->id)->update(['chart_account_id' => $targetId]);
+            Subcategory::query()->where('chart_account_id', $chart_account->id)->update(['chart_account_id' => $targetId]);
+            Movement::query()->where('chart_account_id', $chart_account->id)->update(['chart_account_id' => $targetId]);
+
+            $defaults = $this->mapping->typeDefaults();
+            $changed = false;
+            foreach (['income', 'expense'] as $key) {
+                if (($defaults[$key] ?? null) === (int) $chart_account->id) {
+                    $defaults[$key] = $targetId;
+                    $changed = true;
+                }
+            }
+            if ($changed) {
+                $this->mapping->saveTypeDefaults($defaults);
+            }
+
+            $chart_account->delete();
+
+            $this->audit->log('chart_account_deleted', null, $snapshot, [
+                'disposition' => $targetId ? 'reassign' : 'unassign',
+                'reassign_to' => $targetId,
+                'children_reparented' => $childrenCount,
+                'usage' => $usage,
+            ], 'Cuenta contable eliminada');
+        });
+
+        $msg = $targetId
+            ? 'Cuenta eliminada. Referencias reasignadas.'
+            : 'Cuenta eliminada. Referencias quedaron sin asignar.';
+
+        return redirect()->route('chart-accounts.index')->with('status', $msg);
+    }
+
+    private function isDescendant(ChartAccount $root, int $candidateId): bool
+    {
+        $frontier = [$root->id];
+        while ($frontier !== []) {
+            $ids = ChartAccount::query()->whereIn('parent_id', $frontier)->pluck('id')->all();
+            if (in_array($candidateId, $ids, true)) {
+                return true;
+            }
+            $frontier = $ids;
+        }
+
+        return false;
+    }
+
     /**
-     * @return array{categories: int, subcategories: int, movements: int}
+     * @return array{categories: int, subcategories: int, movements: int, children: int}
      */
     private function usage(ChartAccount $account): array
     {
@@ -197,6 +292,7 @@ class ChartAccountController extends Controller
             'categories' => Category::query()->where('chart_account_id', $account->id)->count(),
             'subcategories' => Subcategory::query()->where('chart_account_id', $account->id)->count(),
             'movements' => Movement::query()->where('chart_account_id', $account->id)->count(),
+            'children' => $account->children()->count(),
         ];
     }
 

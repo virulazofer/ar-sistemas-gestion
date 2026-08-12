@@ -65,7 +65,7 @@ class CategoryController extends Controller
     public function show(Request $request, Category $category): View
     {
         $category->load(['subcategories.chartAccount', 'chartAccount']);
-        [$from, $to, $movements, $totals, $monthly, $avgArs, $sumArs] = $this->analytics(
+        [$from, $to, $movements, $totals, $monthly, $avgArs, $sumArs, $filters] = $this->analytics(
             $request,
             fn ($q) => $q->where('category_id', $category->id)
         );
@@ -75,6 +75,9 @@ class CategoryController extends Controller
             ->where('category_id', $category->id)
             ->whereDate('movement_date', '>=', $from->toDateString())
             ->whereDate('movement_date', '<=', $to->toDateString())
+            ->when($filters['scope'] ?? null, fn ($q) => $q->where('scope', $filters['scope']))
+            ->when($filters['financial_account_id'] ?? null, fn ($q) => $q->where('financial_account_id', $filters['financial_account_id']))
+            ->when(($filters['q'] ?? '') !== '', fn ($q) => $q->where('description', 'like', '%'.$filters['q'].'%'))
             ->selectRaw('subcategory_id, SUM(amount_ars) as total_ars, COUNT(*) as cnt')
             ->groupBy('subcategory_id')
             ->get()
@@ -90,13 +93,14 @@ class CategoryController extends Controller
             'avgArs',
             'sumArs',
             'subBreakdown',
+            'filters',
         ));
     }
 
     public function showSubcategory(Request $request, Subcategory $subcategory): View
     {
         $subcategory->load(['category', 'chartAccount']);
-        [$from, $to, $movements, $totals, $monthly, $avgArs, $sumArs] = $this->analytics(
+        [$from, $to, $movements, $totals, $monthly, $avgArs, $sumArs, $filters] = $this->analytics(
             $request,
             fn ($q) => $q->where('subcategory_id', $subcategory->id)
         );
@@ -110,6 +114,7 @@ class CategoryController extends Controller
             'to',
             'avgArs',
             'sumArs',
+            'filters',
         ));
     }
 
@@ -153,20 +158,26 @@ class CategoryController extends Controller
 
     /**
      * @param  callable(\Illuminate\Database\Eloquent\Builder): \Illuminate\Database\Eloquent\Builder  $scope
-     * @return array{0: Carbon, 1: Carbon, 2: mixed, 3: mixed, 4: mixed, 5: float, 6: float}
+     * @return array{0: Carbon, 1: Carbon, 2: mixed, 3: mixed, 4: mixed, 5: float, 6: float, 7: array}
      */
     private function analytics(Request $request, callable $scope): array
     {
         $from = $request->filled('from') ? Carbon::parse($request->string('from'))->startOfDay() : now()->startOfMonth();
         $to = $request->filled('to') ? Carbon::parse($request->string('to'))->endOfDay() : now()->endOfDay();
+        $movementScope = $request->string('scope')->toString() ?: null;
+        $financialAccountId = $request->integer('financial_account_id') ?: null;
+        $q = trim((string) $request->get('q', ''));
 
         $base = Movement::query()->posted()
             ->whereDate('movement_date', '>=', $from->toDateString())
-            ->whereDate('movement_date', '<=', $to->toDateString());
+            ->whereDate('movement_date', '<=', $to->toDateString())
+            ->when($movementScope, fn ($query) => $query->where('scope', $movementScope))
+            ->when($financialAccountId, fn ($query) => $query->where('financial_account_id', $financialAccountId))
+            ->when($q !== '', fn ($query) => $query->where('description', 'like', "%{$q}%"));
         $base = $scope($base);
 
         $movements = (clone $base)
-            ->with(['account.currency', 'category', 'subcategory'])
+            ->with(['account.currency', 'category', 'subcategory', 'chartAccount'])
             ->orderByDesc('movement_date')
             ->orderByDesc('id')
             ->paginate(30)
@@ -193,6 +204,13 @@ class CategoryController extends Controller
         $sumArs = (float) $monthly->sum('total_ars');
         $avgArs = $sumArs / $monthsCount;
 
-        return [$from, $to, $movements, $totals, $monthly, $avgArs, $sumArs];
+        $filters = [
+            'scope' => $movementScope,
+            'financial_account_id' => $financialAccountId,
+            'q' => $q,
+            'accounts' => \App\Models\FinancialAccount::query()->where('status', 'active')->orderBy('name')->get(['id', 'name']),
+        ];
+
+        return [$from, $to, $movements, $totals, $monthly, $avgArs, $sumArs, $filters];
     }
 }

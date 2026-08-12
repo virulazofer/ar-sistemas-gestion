@@ -16,7 +16,7 @@ class MovementController extends Controller
     public function index(Request $request): View
     {
         $movements = Movement::query()
-            ->with(['account.currency', 'category', 'subcategory', 'user'])
+            ->with(['account.currency', 'category', 'subcategory', 'chartAccount', 'user'])
             ->when($request->filled('scope'), fn ($q) => $q->where('scope', $request->string('scope')))
             ->when($request->filled('type'), fn ($q) => $q->where('type', $request->string('type')))
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->string('status')))

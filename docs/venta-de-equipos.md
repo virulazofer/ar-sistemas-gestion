@@ -16,12 +16,8 @@ Flujo comercial para vender un equipo armado existente, reutilizando el módulo 
 3. Elegir equipo; la UI muestra costo y permite ingresar **margen %** para calcular precio = costo × (1 + margen/100).
 4. Crear borrador → confirmar (crédito o contado).
 
-## Qué no hace
+## Limitación de precio en productos
 
-- No fabrica automáticamente (`build_to_order` sigue bloqueado hasta fabricación).
-- No vuelve a descontar stock de componentes.
-- No inventa precio de lista en el maestro de productos (el precio vive en el documento de venta).
-
-## Ayuda en pantalla
-
-Ver `x-page-help` en ventas y equipos (`config/help.php` → `sales`, `equipment`, `equipment_sale`).
+El maestro de productos **no** tiene `sale_price`. Existe `reference_cost_usd` (costo de referencia), que **nunca** se muestra como “Precio”.
+La columna Precio del listado queda preparada (`Product::displaySalePrice()`) y hoy muestra "—" hasta que exista un campo de venta real.
+El precio comercial vive en la línea de venta / presupuesto (`unit_price`).
