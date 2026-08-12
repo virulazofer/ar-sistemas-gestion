@@ -92,4 +92,37 @@
             </div>
         @endforeach
     </div>
+
+    @can('categories.edit')
+        <div class="mt-8 grid gap-4 lg:grid-cols-2">
+            <form method="POST" action="{{ route('categories.merge.preview') }}" class="ar-card space-y-3 p-4">
+                @csrf
+                <h2 class="font-semibold">Fusionar categorías (con preview)</h2>
+                <select name="source_id" class="ar-input" required>
+                    <option value="">Origen</option>
+                    @foreach ($categories as $category)
+                        <option value="{{ $category->id }}">{{ $category->name }}</option>
+                    @endforeach
+                </select>
+                <select name="target_id" class="ar-input" required>
+                    <option value="">Destino</option>
+                    @foreach ($categories as $category)
+                        <option value="{{ $category->id }}">{{ $category->name }}</option>
+                    @endforeach
+                </select>
+                <button class="ar-btn ar-btn-secondary">Vista previa fusión</button>
+            </form>
+            @if (session('category_merge_preview'))
+                <div class="ar-card space-y-2 p-4">
+                    <p class="font-semibold">Afectará {{ session('category_merge_preview')['movements'] }} movimientos</p>
+                    <p class="text-sm">{{ session('category_merge_preview')['source'] }} → {{ session('category_merge_preview')['target'] }}</p>
+                    <form method="POST" action="{{ route('categories.merge.apply') }}">
+                        @csrf
+                        <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="confirm" value="1" required> Confirmo fusión</label>
+                        <button class="ar-btn ar-btn-primary mt-2">Aplicar fusión</button>
+                    </form>
+                </div>
+            @endif
+        </div>
+    @endcan
 </x-app-layout>

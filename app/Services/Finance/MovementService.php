@@ -72,7 +72,12 @@ class MovementService
                 }
             }
             $chartAccountId = $data['chart_account_id']
-                ?? $this->chartMapping->resolve($categoryId, $subcategoryId, $type->value)['chart_account_id'];
+                ?? $this->chartMapping->resolve(
+                    $categoryId,
+                    $subcategoryId,
+                    $type->value,
+                    $data['description'] ?? null,
+                )['chart_account_id'];
 
             $movement = Movement::query()->create([
                 'transfer_id' => null,

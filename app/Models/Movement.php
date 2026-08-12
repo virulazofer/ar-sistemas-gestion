@@ -95,6 +95,16 @@ class Movement extends Model
         return $this->belongsTo(ChartAccount::class);
     }
 
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(Client::class);
+    }
+
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

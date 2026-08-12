@@ -29,8 +29,10 @@ use App\Http\Controllers\Finance\ChartAccountController;
 use App\Http\Controllers\Finance\DashboardController;
 use App\Http\Controllers\Finance\ExchangeRateController;
 use App\Http\Controllers\Finance\FinancialAccountController;
+use App\Http\Controllers\Finance\ImputationRuleController;
 use App\Http\Controllers\Finance\MovementController;
 use App\Http\Controllers\Finance\QuickMovementController;
+use App\Http\Controllers\Finance\UnclassifiedMovementController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RolePermissionController;
 use App\Http\Controllers\SettingController;
@@ -482,11 +484,21 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/subcategorias', [CategoryController::class, 'storeSubcategory'])
         ->middleware('permission:categories.create')
         ->name('subcategories.store');
+    Route::middleware('permission:categories.edit')->group(function () {
+        Route::post('/categorias/{category}/renombrar', [CategoryController::class, 'rename'])->name('categories.rename');
+        Route::post('/subcategorias/{subcategory}/renombrar', [CategoryController::class, 'renameSubcategory'])->name('subcategories.rename');
+        Route::post('/categorias/fusion/preview', [CategoryController::class, 'previewMerge'])->name('categories.merge.preview');
+        Route::post('/categorias/fusion/aplicar', [CategoryController::class, 'merge'])->name('categories.merge.apply');
+        Route::post('/categorias/{category}/convertir-subcategoria', [CategoryController::class, 'convertToSubcategory'])->name('categories.convert-sub');
+    });
 
     Route::middleware('permission:categories.view')->group(function () {
         Route::get('/plan-de-cuentas', [ChartAccountController::class, 'index'])->name('chart-accounts.index');
         Route::get('/plan-de-cuentas/mapa', [ChartAccountController::class, 'map'])->name('chart-accounts.map');
         Route::get('/plan-de-cuentas/mapeo', [ChartAccountController::class, 'mappingTool'])->name('chart-accounts.mapping');
+        Route::get('/plan-de-cuentas/movimientos-sin-clasificar', [UnclassifiedMovementController::class, 'index'])->name('chart-accounts.unclassified');
+        Route::get('/plan-de-cuentas/analisis-semantico', [UnclassifiedMovementController::class, 'semanticsReport'])->name('chart-accounts.semantics');
+        Route::get('/plan-de-cuentas/reglas-imputacion', [ImputationRuleController::class, 'index'])->name('imputation-rules.index');
     });
     Route::middleware('permission:categories.create')->group(function () {
         Route::get('/plan-de-cuentas/crear', [ChartAccountController::class, 'create'])->name('chart-accounts.create');
@@ -500,6 +512,20 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/plan-de-cuentas/{chart_account}/editar', [ChartAccountController::class, 'edit'])->name('chart-accounts.edit');
         Route::put('/plan-de-cuentas/{chart_account}', [ChartAccountController::class, 'update'])->name('chart-accounts.update');
         Route::delete('/plan-de-cuentas/{chart_account}', [ChartAccountController::class, 'destroy'])->name('chart-accounts.destroy');
+
+        Route::post('/plan-de-cuentas/movimientos-sin-clasificar/bulk/preview', [UnclassifiedMovementController::class, 'previewBulk'])->name('chart-accounts.unclassified.bulk.preview');
+        Route::post('/plan-de-cuentas/movimientos-sin-clasificar/bulk/aplicar', [UnclassifiedMovementController::class, 'applyBulk'])->name('chart-accounts.unclassified.bulk.apply');
+        Route::post('/plan-de-cuentas/movimientos-sin-clasificar/patron/preview', [UnclassifiedMovementController::class, 'previewPattern'])->name('chart-accounts.unclassified.pattern.preview');
+        Route::post('/plan-de-cuentas/movimientos-sin-clasificar/patron/aplicar', [UnclassifiedMovementController::class, 'applyPattern'])->name('chart-accounts.unclassified.pattern.apply');
+        Route::post('/plan-de-cuentas/movimientos-sin-clasificar/{movement}', [UnclassifiedMovementController::class, 'classify'])->name('chart-accounts.unclassified.classify');
+        Route::post('/plan-de-cuentas/normalizar-super', [UnclassifiedMovementController::class, 'normalizeSuper'])->name('chart-accounts.normalize-super');
+        Route::post('/plan-de-cuentas/ingresos-profesionales', [UnclassifiedMovementController::class, 'ensureProfessionalIncomes'])->name('chart-accounts.professional-incomes');
+
+        Route::post('/plan-de-cuentas/reglas-imputacion', [ImputationRuleController::class, 'store'])->name('imputation-rules.store');
+        Route::put('/plan-de-cuentas/reglas-imputacion/{imputation_rule}', [ImputationRuleController::class, 'update'])->name('imputation-rules.update');
+        Route::delete('/plan-de-cuentas/reglas-imputacion/{imputation_rule}', [ImputationRuleController::class, 'destroy'])->name('imputation-rules.destroy');
+        Route::post('/plan-de-cuentas/reglas-imputacion/{imputation_rule}/preview', [ImputationRuleController::class, 'preview'])->name('imputation-rules.preview');
+        Route::post('/plan-de-cuentas/reglas-imputacion/{imputation_rule}/aplicar', [ImputationRuleController::class, 'apply'])->name('imputation-rules.apply');
     });
 
     Route::middleware('permission:users.create')->group(function () {
@@ -515,6 +541,8 @@ Route::middleware(['auth'])->group(function () {
     Route::middleware('permission:users.edit')->group(function () {
         Route::get('/users/{user}/edit', [UserController::class, 'edit'])->name('users.edit');
         Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
+        Route::post('/users/{user}/enviar-reset', [UserController::class, 'sendPasswordReset'])->name('users.send-reset');
+        Route::post('/users/{user}/enviar-verificacion', [UserController::class, 'sendVerification'])->name('users.send-verification');
     });
 
     Route::delete('/users/{user}', [UserController::class, 'destroy'])

@@ -5,6 +5,7 @@ namespace App\Services\Finance;
 use App\Enums\MovementType;
 use App\Models\Category;
 use App\Models\ChartAccount;
+use App\Models\ImputationRule;
 use App\Models\Movement;
 use App\Models\Setting;
 use App\Models\Subcategory;
@@ -15,20 +16,25 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Reglas dinámicas categoría/subcategoría → cuenta contable (plan).
- * Precedencia: subcategoría > categoría > tipo de movimiento > sin asignar.
+ * Precedencia: subcategoría > categoría > regla de imputación > tipo de movimiento > sin asignar.
  * Distinto de cuentas financieras (caja/banco).
  */
 class ChartAccountMappingService
 {
     public const SETTING_TYPE_DEFAULTS = 'chart_mapping.type_defaults';
 
-    public function __construct(private readonly AuditLogger $audit) {}
+    public function __construct(
+        private readonly AuditLogger $audit,
+        private readonly ?ImputationRuleService $imputationRules = null,
+    ) {}
 
     /**
-     * @return array{chart_account_id: ?int, source: string}
+     * @return array{chart_account_id: ?int, source: string, rule_id?: ?int}
      */
-    public function resolve(?int $categoryId, ?int $subcategoryId, ?string $movementType = null): array
+    public function resolve(?int $categoryId, ?int $subcategoryId, ?string $movementType = null, ?string $description = null): array
     {
+        $categoryName = null;
+
         if ($subcategoryId) {
             $sub = Subcategory::query()->find($subcategoryId);
             if ($sub?->chart_account_id) {
@@ -44,9 +50,27 @@ class ChartAccountMappingService
 
         if ($categoryId) {
             $cat = Category::query()->find($categoryId);
+            $categoryName = $cat?->name;
             if ($cat?->chart_account_id) {
                 return ['chart_account_id' => (int) $cat->chart_account_id, 'source' => 'category'];
             }
+        }
+
+        $rules = $this->imputationRules ?? app(ImputationRuleService::class);
+        $matched = $rules->match($description, $movementType, $categoryName);
+        if ($matched && ! empty($matched['chart_account_id'])) {
+            $source = 'imputation_rule';
+            // Compatibilidad: reglas espejo de defaults por tipo se reportan como "type".
+            $rule = ImputationRule::query()->find($matched['rule_id'] ?? 0);
+            if ($rule && $rule->condition_type === ImputationRule::TYPE_MOVEMENT_TYPE) {
+                $source = 'type';
+            }
+
+            return [
+                'chart_account_id' => (int) $matched['chart_account_id'],
+                'source' => $source,
+                'rule_id' => $matched['rule_id'] ?? null,
+            ];
         }
 
         $typeDefaults = $this->typeDefaults();
@@ -85,6 +109,17 @@ class ChartAccountMappingService
         ];
         Setting::setValue(self::SETTING_TYPE_DEFAULTS, $payload, 'json');
         $this->audit->log('chart_mapping_type_defaults', null, null, $payload, 'Defaults tipo→plan de cuentas');
+
+        // Espejo en reglas de imputación (UX: REGLAS DE IMPUTACIÓN).
+        ($this->imputationRules ?? app(ImputationRuleService::class))->syncTypeDefaultRules($payload);
+    }
+
+    /**
+     * @return array{total: int, classified: int, pending: int, percent: float}
+     */
+    public function classificationProgress(): array
+    {
+        return app(UnclassifiedMovementsService::class)->progress();
     }
 
     public function mapCategory(Category $category, ?int $chartAccountId): Category
@@ -226,7 +261,7 @@ class ChartAccountMappingService
 
         foreach ($movements as $m) {
             $type = $m->type instanceof MovementType ? $m->type->value : (string) $m->getRawOriginal('type');
-            $resolved = $this->resolve($m->category_id, $m->subcategory_id, $type);
+            $resolved = $this->resolve($m->category_id, $m->subcategory_id, $type, $m->description);
             $to = $resolved['chart_account_id'];
             $from = $m->chart_account_id ? (int) $m->chart_account_id : null;
 
@@ -284,7 +319,7 @@ class ChartAccountMappingService
 
             foreach ($movements as $m) {
                 $type = $m->type instanceof MovementType ? $m->type->value : (string) $m->getRawOriginal('type');
-                $resolved = $this->resolve($m->category_id, $m->subcategory_id, $type);
+                $resolved = $this->resolve($m->category_id, $m->subcategory_id, $type, $m->description);
                 $to = $resolved['chart_account_id'];
                 $from = $m->chart_account_id ? (int) $m->chart_account_id : null;
 

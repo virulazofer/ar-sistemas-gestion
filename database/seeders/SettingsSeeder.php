@@ -22,9 +22,9 @@ class SettingsSeeder extends Seeder
                 'key' => 'app.default_theme',
                 'value' => 'light',
                 'type' => 'string',
-                'group' => 'appearance',
+                'group' => 'apariencia',
                 'label' => 'Tema predeterminado',
-                'description' => 'Tema inicial para nuevos usuarios (light|dark).',
+                'description' => 'Tema inicial para nuevos usuarios (Claro u Oscuro).',
             ],
             [
                 'key' => 'app.timezone',

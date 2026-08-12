@@ -52,7 +52,29 @@
     @if (!empty($totals))
         <div class="ar-card mb-4 p-4 text-sm">
             @foreach ($totals as $k => $v)
-                <span class="me-4"><span class="ar-muted">{{ $k }}:</span> <strong>{{ is_numeric($v) ? number_format((float) $v, 2, ',', '.') : $v }}</strong></span>
+                @php
+                    $label = match ((string) $k) {
+                        'income_ars', 'income' => 'Ingresos ARS',
+                        'expense_ars', 'expense' => 'Egresos ARS',
+                        'result_ars', 'result' => 'Resultado ARS',
+                        'income_usd' => 'Ingresos USD',
+                        'expense_usd' => 'Egresos USD',
+                        'result_usd' => 'Resultado USD',
+                        'amount', 'amount_ars' => 'Importe ARS',
+                        'amount_usd' => 'Importe USD',
+                        'balance', 'balance_ars' => 'Saldo ARS',
+                        'balance_usd' => 'Saldo USD',
+                        'count', 'movements' => 'Movimientos',
+                        'date' => 'Fecha',
+                        'description' => 'Descripción',
+                        'account' => 'Cuenta',
+                        'customer', 'client' => 'Cliente',
+                        default => is_string($k) && ! preg_match('/^(income|expense|amount|balance|customer|description|date)_?/i', (string) $k)
+                            ? (string) $k
+                            : \App\Support\UiLabels::get((string) $k, (string) $k),
+                    };
+                @endphp
+                <span class="me-4"><span class="ar-muted">{{ $label }}:</span> <strong>{{ is_numeric($v) ? number_format((float) $v, 2, ',', '.') : $v }}</strong></span>
             @endforeach
         </div>
     @endif

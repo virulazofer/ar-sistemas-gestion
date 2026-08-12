@@ -7,6 +7,8 @@
             </div>
             <div class="flex flex-wrap gap-2">
                 <a href="{{ route('chart-accounts.index') }}" class="ar-btn ar-btn-secondary">Volver</a>
+                <a href="{{ route('chart-accounts.unclassified') }}" class="ar-btn ar-btn-secondary">Sin clasificar</a>
+                <a href="{{ route('imputation-rules.index') }}" class="ar-btn ar-btn-secondary">Reglas de imputación</a>
                 @can('categories.create')
                     <a href="{{ route('chart-accounts.create', ['return' => 'mapping']) }}" class="ar-btn ar-btn-primary">Crear cuenta inline</a>
                 @endcan
@@ -15,15 +17,22 @@
     </x-slot>
 
     <p class="ar-muted mb-4 text-sm">
-        Reglas dinámicas: al crear movimientos se resuelve subcategoría → categoría → tipo → sin asignar.
-        Materializar en movimientos históricos solo con <strong>preview + aplicar</strong> (no reescribe 762 uno a uno a mano).
-        Distinción: cuenta contable ≠ cuenta financiera.
+        Reglas dinámicas: al crear movimientos se resuelve subcategoría → categoría → regla de imputación → tipo → sin asignar.
+        Materializar en movimientos históricos solo con <strong>preview + aplicar</strong>.
+        Distinción: <strong>cuenta contable</strong> ≠ <strong>cuenta financiera</strong>.
     </p>
 
+    <div class="ar-card mb-4 grid gap-3 p-4 sm:grid-cols-4 text-sm">
+        <div><p class="ar-muted text-xs">Totales</p><p class="font-semibold">{{ $progress['total'] }}</p></div>
+        <div><p class="ar-muted text-xs">Clasificados</p><p class="font-semibold">{{ $progress['classified'] }}</p></div>
+        <div><p class="ar-muted text-xs">Pendientes</p><p class="font-semibold">{{ $progress['pending'] }}</p></div>
+        <div><p class="ar-muted text-xs">Resuelto</p><p class="font-semibold">{{ $progress['percent'] }}%</p></div>
+    </div>
+
     @if ($unassignedMovements > 0)
-        <div class="mb-4 rounded border p-3 text-sm" style="border-color: var(--ar-danger, #b91c1c); color: var(--ar-danger, #b91c1c);">
-            Alerta: <strong>{{ $unassignedMovements }}</strong> movimientos sin cuenta contable.
-        </div>
+        <a href="{{ route('chart-accounts.unclassified') }}" class="mb-4 block rounded border p-3 text-sm" style="border-color: var(--ar-danger, #b91c1c); color: var(--ar-danger, #b91c1c);">
+            Alerta: <strong>{{ $unassignedMovements }}</strong> movimientos sin cuenta contable — abrir listado accionable
+        </a>
     @endif
 
     @if (session('status'))
@@ -33,9 +42,10 @@
     <div class="mb-6 grid gap-4 lg:grid-cols-2">
         <form method="POST" action="{{ route('chart-accounts.mapping.type-defaults') }}" class="ar-card space-y-3 p-4">
             @csrf
-            <h2 class="font-semibold">Defaults por tipo de movimiento</h2>
+            <h2 class="font-semibold">Reglas de imputación por tipo</h2>
+            <p class="ar-muted text-xs">Equivalente operativo a «defaults por tipo»: se guardan también como reglas reutilizables.</p>
             <div>
-                <label class="ar-label">Ingreso →</label>
+                <label class="ar-label">Ingresos → cuenta contable</label>
                 <select name="income" class="ar-input">
                     <option value="">—</option>
                     @foreach ($chartAccounts as $ca)
@@ -44,7 +54,7 @@
                 </select>
             </div>
             <div>
-                <label class="ar-label">Gasto →</label>
+                <label class="ar-label">Egresos → cuenta contable</label>
                 <select name="expense" class="ar-input">
                     <option value="">—</option>
                     @foreach ($chartAccounts as $ca)
@@ -52,17 +62,19 @@
                     @endforeach
                 </select>
             </div>
-            <button class="ar-btn ar-btn-secondary">Guardar defaults</button>
+            <button class="ar-btn ar-btn-secondary">Guardar reglas por tipo</button>
+            <a href="{{ route('imputation-rules.index') }}" class="ar-btn ar-btn-secondary text-xs">Administrar todas las reglas</a>
         </form>
 
         <div class="ar-card space-y-3 p-4">
             <h2 class="font-semibold">Asistente: sin cuenta asignada</h2>
             <p class="text-sm">{{ $assistant['total_unmapped'] }} ítems (cat/sub) sin mapeo.</p>
+            <a href="{{ route('chart-accounts.unclassified') }}" class="ar-btn ar-btn-primary text-xs">Ir a movimientos sin clasificar</a>
             @if ($assistant['categories'])
                 <p class="text-xs font-semibold">Categorías</p>
                 <ul class="list-disc ps-5 text-sm">
                     @foreach ($assistant['categories'] as $row)
-                        <li>{{ $row['name'] }} ({{ $row['scope'] }}) · movs sin cuenta: {{ $row['movement_count'] }}</li>
+                        <li>{{ $row['name'] }} ({{ \App\Support\UiLabels::get($row['scope'], $row['scope']) }}) · movs sin cuenta: {{ $row['movement_count'] }}</li>
                     @endforeach
                 </ul>
             @endif
@@ -80,19 +92,23 @@
                         </div>
                     @endforeach
                 </div>
-            @elseif ($assistant['subcategories'])
-                <p class="text-xs font-semibold">Subcategorías</p>
-                <ul class="list-disc ps-5 text-sm">
-                    @foreach ($assistant['subcategories'] as $row)
-                        <li>{{ $row['category_name'] }} / {{ $row['name'] }} · movs sin cuenta: {{ $row['movement_count'] }}</li>
-                    @endforeach
-                </ul>
             @endif
         </div>
     </div>
 
+    @if (($imputationRules ?? collect())->isNotEmpty())
+        <div class="ar-card mb-6 p-4">
+            <h2 class="mb-2 font-semibold">Reglas activas (resumen)</h2>
+            <ul class="list-disc ps-5 text-sm">
+                @foreach ($imputationRules->where('is_active', true)->take(12) as $rule)
+                    <li>{{ $rule->conditionLabel() }} → {{ $rule->destinationLabel() }} (prio {{ $rule->priority }})</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
     <div class="mb-6 space-y-3">
-        <h2 class="font-semibold">Asignar categoría / subcategoría</h2>
+        <h2 class="font-semibold">Asignar categoría / subcategoría → cuenta contable</h2>
         @foreach ($categories as $category)
             <div class="ar-card space-y-2 p-4">
                 <form method="POST" action="{{ route('chart-accounts.mapping.save') }}" class="flex flex-wrap items-end gap-2">
@@ -100,7 +116,7 @@
                     <input type="hidden" name="target" value="category">
                     <input type="hidden" name="id" value="{{ $category->id }}">
                     <div class="min-w-[12rem] flex-1">
-                        <p class="font-medium">{{ $category->name }} <span class="ar-muted text-xs">({{ $category->scope }})</span></p>
+                        <p class="font-medium">{{ $category->name }} <span class="ar-muted text-xs">({{ \App\Support\UiLabels::get($category->scope, $category->scope) }})</span></p>
                     </div>
                     <select name="chart_account_id" class="ar-input max-w-md">
                         <option value="">Sin asignar</option>
@@ -134,7 +150,7 @@
         <p class="ar-muted text-sm">No recalcula FX congelado. Solo actualiza <code>chart_account_id</code> según reglas actuales.</p>
         <form method="POST" action="{{ route('chart-accounts.mapping.preview') }}">
             @csrf
-            <button class="ar-btn ar-btn-secondary">Vista previa (audit)</button>
+            <button class="ar-btn ar-btn-secondary">Vista previa (auditoría)</button>
         </form>
 
         @if (! empty($preview))

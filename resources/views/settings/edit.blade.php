@@ -1,7 +1,27 @@
 <x-app-layout>
     <x-slot name="header">
-        <h1 class="text-xl font-semibold">Configuración</h1>
+        <div class="flex items-center gap-2">
+            <h1 class="text-xl font-semibold">Configuración</h1>
+            <x-page-help topic="settings" />
+        </div>
     </x-slot>
+
+    @if (session('status'))
+        <p class="ar-card mb-4 p-3 text-sm">{{ session('status') }}</p>
+    @endif
+
+    @php
+        $groupLabels = [
+            'general' => 'General',
+            'appearance' => 'Apariencia',
+            'apariencia' => 'Apariencia',
+            'commercial' => 'Comercial',
+            'inventory' => 'Inventario',
+            'work_orders' => 'Órdenes de trabajo',
+            'mail' => 'Correo',
+            'finance' => 'Finanzas',
+        ];
+    @endphp
 
     <form method="POST" action="{{ route('settings.update') }}" class="space-y-6">
         @csrf
@@ -9,7 +29,7 @@
 
         @foreach ($settings as $group => $items)
             <div class="ar-card p-5">
-                <h2 class="mb-4 font-semibold capitalize">{{ $group }}</h2>
+                <h2 class="mb-4 font-semibold">{{ $groupLabels[$group] ?? ucfirst(str_replace('_', ' ', $group)) }}</h2>
                 <div class="space-y-4">
                     @foreach ($items as $setting)
                         <div>

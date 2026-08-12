@@ -8,6 +8,7 @@ use App\Models\ChartAccount;
 use App\Models\Movement;
 use App\Models\Subcategory;
 use App\Services\AuditLogger;
+use App\Services\Finance\CategoryReclassificationService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,7 +18,10 @@ use Illuminate\View\View;
 
 class CategoryController extends Controller
 {
-    public function __construct(private readonly AuditLogger $audit) {}
+    public function __construct(
+        private readonly AuditLogger $audit,
+        private readonly CategoryReclassificationService $reclass,
+    ) {}
 
     public function index(Request $request): View
     {
@@ -156,6 +160,72 @@ class CategoryController extends Controller
         $this->audit->log('subcategory_created', $sub, null, $sub->toArray(), 'Subcategoría creada');
 
         return back()->with('status', 'Subcategoría creada.');
+    }
+
+    public function rename(Request $request, Category $category): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'confirm' => ['accepted'],
+        ]);
+        $preview = $this->reclass->previewRenameCategory($category, $data['name']);
+        $this->reclass->renameCategory($category, $data['name']);
+
+        return back()->with('status', "Categoría renombrada. Movimientos afectados: {$preview['movements']}.");
+    }
+
+    public function renameSubcategory(Request $request, Subcategory $subcategory): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'confirm' => ['accepted'],
+        ]);
+        $preview = $this->reclass->previewRenameSubcategory($subcategory, $data['name']);
+        $this->reclass->renameSubcategory($subcategory, $data['name']);
+
+        return back()->with('status', "Subcategoría renombrada. Movimientos afectados: {$preview['movements']}.");
+    }
+
+    public function previewMerge(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'source_id' => ['required', 'exists:categories,id'],
+            'target_id' => ['required', 'exists:categories,id', 'different:source_id'],
+        ]);
+        $source = Category::query()->findOrFail($data['source_id']);
+        $target = Category::query()->findOrFail($data['target_id']);
+        $preview = $this->reclass->previewMergeCategories($source, $target);
+
+        return back()->with('category_merge_preview', array_merge($preview, $data))
+            ->with('status', "Vista previa fusión: afectará {$preview['movements']} movimiento(s).");
+    }
+
+    public function merge(Request $request): RedirectResponse
+    {
+        $request->validate(['confirm' => ['accepted']]);
+        $preview = session('category_merge_preview');
+        if (! is_array($preview) || empty($preview['source_id']) || empty($preview['target_id'])) {
+            return back()->withErrors(['confirm' => 'Primero generá la vista previa de fusión.']);
+        }
+        $source = Category::query()->findOrFail($preview['source_id']);
+        $target = Category::query()->findOrFail($preview['target_id']);
+        $result = $this->reclass->mergeCategories($source, $target);
+
+        return redirect()->route('categories.index')
+            ->with('status', "Fusión aplicada: {$result['moved_movements']} movimientos, {$result['moved_subcategories']} subcategorías.");
+    }
+
+    public function convertToSubcategory(Request $request, Category $category): RedirectResponse
+    {
+        $data = $request->validate([
+            'target_subcategory_id' => ['required', 'exists:subcategories,id'],
+            'confirm' => ['accepted'],
+        ]);
+        $target = Subcategory::query()->findOrFail($data['target_subcategory_id']);
+        $preview = $this->reclass->previewConvertCategoryToSubcategory($category, $target);
+        $result = $this->reclass->convertCategoryToSubcategory($category, $target);
+
+        return back()->with('status', "Reubicación aplicada: {$result['moved_movements']} movimientos (preview: {$preview['movements']}).");
     }
 
     /**

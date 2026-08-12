@@ -44,15 +44,16 @@ return [
         ],
     ],
     'categories' => [
-        'title' => 'Categorías financieras',
-        'summary' => 'Clasificación operativa expandible con analítica (totales, promedio, mensual, click-through).',
+        'title' => 'Categorías y subcategorías',
+        'summary' => 'Clasificación operativa. Ámbito Personal/Profesional es independiente.',
         'bullets' => [
-            'Categoría ≠ cuenta financiera (caja/banco) y ≠ cuenta del plan contable por sí sola.',
-            'Expandí una categoría para ver subcategorías y totales del período.',
-            'Detalle: fechas, ámbito, cuenta financiera, búsqueda y paginación (30; no hay límite silencioso de 10).',
+            'QUÉ ES: agrupación operativa de movimientos (no es caja ni plan contable).',
+            'PARA QUÉ: filtrar, analizar y mapear hacia una cuenta contable.',
+            'ACCIÓN: crear/renombrar/fusionar/reubicar con preview; no se bloquea por tener movimientos.',
+            'Categoría ≠ cuenta financiera ≠ cuenta contable.',
         ],
         'diagram' => "Dimensiones de un movimiento\n[Fecha] [Ámbito] [Descripción]\n[Categoría → Subcategoría] → mapea a [Cuenta contable]\n[Importe] en [Cuenta financiera]",
-        'flow' => 'Listado expandible → clic categoría/sub → filtrá período/ámbito/FA → movimientos.',
+        'flow' => 'Listado → detalle → reclasificar con preview → auditoría.',
     ],
     'exchange_rates' => [
         'title' => 'Cotizaciones',
@@ -164,25 +165,62 @@ return [
     ],
     'chart_accounts' => [
         'title' => 'Plan de cuentas',
-        'summary' => 'Jerarquía contable (Activo/Pasivo/…); distinta de categorías, cajas y CC.',
+        'summary' => 'Jerarquía contable (Activos/Pasivos/…); distinta de categorías y cuentas financieras.',
         'bullets' => [
-            'Árbol con totales reales de movimientos posted.',
-            'Alerta roja si hay movimientos sin cuenta → asistente de mapeo.',
-            'Alta/edición con padre, tipo, impacto y eliminación real (reasignar / sin asignar / cancelar).',
-            'Documentación: docs/plan-de-cuentas.md.',
+            'QUÉ ES: el plan contable (cuenta contable), no la caja/banco.',
+            'PARA QUÉ: reportes económicos y clasificación contable de ingresos/egresos.',
+            'ACCIÓN: revisar alerta de pendientes → Movimientos sin clasificar → resolver o reglas.',
+            'Progreso: totales / clasificados / pendientes / %.',
         ],
-        'diagram' => "Movimiento → Cat/Sub → Mapeo → Cuenta contable → Reportes\nCuenta financiera ≠ Categoría ≠ Plan ≠ CC",
+        'diagram' => "Movimiento → Cat/Sub → Regla/Mapeo → Cuenta contable → Reportes\nCuenta financiera ≠ Categoría ≠ Plan ≠ CC",
     ],
     'chart_accounts.mapping' => [
         'title' => 'Mapeo categorías → plan',
-        'summary' => 'Reglas dinámicas con precedencia subcategoría > categoría > tipo > sin asignar.',
+        'summary' => 'Precedencia: subcategoría > categoría > regla de imputación > tipo > sin asignar.',
         'bullets' => [
-            'Preferí mapear reglas; no reescribas cientos de movimientos a mano.',
-            'Materializá históricos solo con preview + auditoría + confirmar aplicar.',
-            'Podés crear una cuenta contable inline y asignarla de inmediato.',
-            'No recalcula FX congelado al aplicar mapeo.',
+            'Preferí reglas reutilizables; no reescribas cientos de filas a mano.',
+            'Materializá históricos solo con preview + auditoría + confirmar.',
+            'Los «defaults por tipo» viven como reglas de imputación.',
         ],
         'flow' => 'Asignar reglas → Vista previa → Revisar muestra → Confirmar aplicar.',
+    ],
+    'chart_accounts.unclassified' => [
+        'title' => 'Movimientos sin clasificar',
+        'summary' => 'Listado accionable de movimientos posted sin cuenta contable.',
+        'bullets' => [
+            'QUÉ ES: la cola real pendiente (no un número decorativo).',
+            'PARA QUÉ: clasificar uno a uno, masivo o por patrón con preview.',
+            'ACCIÓN: filtrar → seleccionar → preview «afectará N» → confirmar → opcional guardar regla.',
+            'Mostrando X de Y; paginación 10/25/50/100 sin límite silencioso.',
+        ],
+        'flow' => 'Alerta → listado → patrón/fila → preview → aplicar.',
+    ],
+    'chart_accounts.assistant' => [
+        'title' => 'Asistente por patrón',
+        'summary' => 'Agrupa pendientes por concepto/clasificación con confianza ALTA/MEDIA/BAJA.',
+        'bullets' => [
+            'ALTA: puede ofrecer masivo tras preview.',
+            'MEDIA: requiere revisión humana.',
+            'BAJA: no auto-aplicar.',
+        ],
+    ],
+    'imputation_rules' => [
+        'title' => 'Reglas de imputación',
+        'summary' => 'Condición → destino (categoría/sub/cuenta contable), con prioridad y override.',
+        'bullets' => [
+            'QUÉ ES: reglas reutilizables (ej. concepto contiene «Spotify»).',
+            'PARA QUÉ: clasificar futuros y, con preview, históricos.',
+            'ACCIÓN: crear regla → ver coincidencias → preview → aplicar si corresponde.',
+        ],
+        'flow' => 'Crear → Preview N afectados → Confirmar → opcional uso futuro.',
+    ],
+    'settings' => [
+        'title' => 'Configuración',
+        'summary' => 'Parámetros del sistema en castellano.',
+        'bullets' => [
+            'Labels y descripciones visibles en español.',
+            'Claves técnicas internas pueden permanecer en inglés en base de datos.',
+        ],
     ],
     'movements' => [
         'title' => 'Movimientos',
@@ -226,10 +264,11 @@ return [
     ],
     'reports' => [
         'title' => 'Reportes',
-        'summary' => 'Consultas y exportaciones de finanzas, stock y comercial.',
+        'summary' => 'Consultas y exportaciones de finanzas, stock y comercial (UI en castellano).',
         'bullets' => [
-            'Usá filtros de fecha cuando estén disponibles.',
-            'Exportá CSV/XLSX/PDF según permisos.',
+            'QUÉ ES: vistas de Movimientos, Saldos, Ingresos/Egresos, CxC, etc.',
+            'PARA QUÉ: control y exportación CSV/XLSX/PDF.',
+            'ACCIÓN: filtrar → revisar columnas en español → exportar según permiso.',
         ],
     ],
     'imports' => [
@@ -242,11 +281,13 @@ return [
         ],
     ],
     'users' => [
-        'title' => 'Usuarios y permisos',
-        'summary' => 'Acceso al sistema y roles Spatie.',
+        'title' => 'Usuarios',
+        'summary' => 'Altas, roles, verificación de correo y restablecimiento de contraseña.',
         'bullets' => [
-            'Los permisos controlan menús y acciones sensibles (p. ej. reconstruir stock).',
-            'No compartas credenciales de staging/producción.',
+            'QUÉ ES: acceso al sistema (sin contraseñas en claro).',
+            'PARA QUÉ: controlar permisos y recuperar acceso por email.',
+            'ACCIÓN: crear usuario → verificación → «Enviar enlace para restablecer» si hace falta.',
+            'SMTP pendiente: la función existe; revisá diagnóstico de correo en la ficha.',
         ],
     ],
     'permissions' => [

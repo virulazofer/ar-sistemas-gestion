@@ -38,6 +38,7 @@ class ChartAccountController extends Controller
         $tree = $this->mapping->reportTree($dateFrom, $dateTo);
         $unassignedMovements = $this->mapping->countMovementsWithoutAccount();
         $assistant = $this->mapping->unassignedAssistant();
+        $progress = $this->mapping->classificationProgress();
         $flat = ChartAccount::query()->orderBy('code')->get();
 
         return view('finance.chart_accounts.index', compact(
@@ -46,6 +47,7 @@ class ChartAccountController extends Controller
             'tree',
             'unassignedMovements',
             'assistant',
+            'progress',
             'dateFrom',
             'dateTo',
         ));
@@ -73,7 +75,13 @@ class ChartAccountController extends Controller
         $assistant = $this->mapping->unassignedAssistant();
         $typeDefaults = $this->mapping->typeDefaults();
         $unassignedMovements = $this->mapping->countMovementsWithoutAccount();
+        $progress = $this->mapping->classificationProgress();
         $preview = session('chart_mapping_preview');
+        $imputationRules = \App\Models\ImputationRule::query()
+            ->with(['targetCategory', 'targetSubcategory', 'targetChartAccount', 'creator'])
+            ->orderBy('priority')
+            ->orderBy('id')
+            ->get();
 
         return view('finance.chart_accounts.mapping', compact(
             'categories',
@@ -81,7 +89,9 @@ class ChartAccountController extends Controller
             'assistant',
             'typeDefaults',
             'unassignedMovements',
+            'progress',
             'preview',
+            'imputationRules',
         ));
     }
 

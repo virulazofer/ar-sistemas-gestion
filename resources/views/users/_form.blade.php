@@ -15,9 +15,10 @@
 
 <div class="grid gap-4 sm:grid-cols-2">
     <div>
-        <label class="ar-label" for="password">Contraseña {{ $user ? '(opcional)' : '' }}</label>
-        <input id="password" name="password" type="password" class="ar-input" {{ $user ? '' : 'required' }}>
-    </div>
+    <label class="ar-label" for="password">Contraseña {{ $user ? '(opcional)' : '' }}</label>
+    <input id="password" name="password" type="password" class="ar-input" {{ $user ? '' : 'required' }} autocomplete="new-password">
+    <p class="ar-muted mt-1 text-xs">Nunca se muestra en claro. Preferí «Enviar enlace para restablecer» en edición.</p>
+</div>
     <div>
         <label class="ar-label" for="password_confirmation">Confirmar contraseña</label>
         <input id="password_confirmation" name="password_confirmation" type="password" class="ar-input" {{ $user ? '' : 'required' }}>
