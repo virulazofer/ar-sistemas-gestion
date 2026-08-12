@@ -6,14 +6,17 @@ use App\Enums\MovementType;
 use App\Models\Category;
 use App\Models\Movement;
 use App\Models\Subcategory;
+use App\Services\AuditLogger;
 use App\Services\Exports\ExportService;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Dry-run de reclasificación estructural 11F-8.
- * Nunca aplica cambios masivos desde este servicio (apply queda en CategoryReclassificationService).
+ * Dry-run + apply ALTA (solo con autorización explícita) de reclasificación estructural 11F-8.
+ * Apply no toca ámbito, importes, fechas, cuentas financieras ni fuerza chart_account_id.
  */
 class StructuralReclassificationPlanner
 {
@@ -39,10 +42,14 @@ class StructuralReclassificationPlanner
         'pata de motor', 'refrigerante', 'limpiavidrios', 'bujia', 'bujía', 'pastilla', 'frenos',
     ];
 
+    /** @var list<string> */
+    private const AUTO_WASH = ['lavado', 'limpieza auto', 'detailing', 'acarpetado'];
+
     public function __construct(
         private readonly ApprovedTaxonomyService $taxonomy,
         private readonly OperationalClassificationService $operational,
         private readonly ExportService $exports,
+        private readonly AuditLogger $audit,
     ) {}
 
     /**
@@ -330,6 +337,7 @@ class StructuralReclassificationPlanner
         );
         $row['ambiguos'] = $ambiguous->count();
         $row['ambiguous_ids'] = $ambiguous->pluck('id')->all();
+        $row['high_ids'] = $high->pluck('id')->all();
 
         return $row;
     }
@@ -392,6 +400,7 @@ class StructuralReclassificationPlanner
         $row['ambiguos'] = count($ambiguousIds);
         $row['ambiguous_ids'] = $ambiguousIds;
         $row['high_ids'] = $highIds;
+        $row['proposals'] = $proposals;
         $row['proposals_sample'] = array_slice($proposals, 0, 40);
 
         return $row;
@@ -415,11 +424,277 @@ class StructuralReclassificationPlanner
         if ($this->containsAny($d, self::AUTO_PARKING)) {
             return 'Estacionamiento';
         }
+        if ($this->containsAny($d, self::AUTO_WASH)) {
+            return 'Lavado/Limpieza';
+        }
         if ($this->containsAny($d, self::AUTO_MAINT)) {
             return 'Mantenimiento';
         }
 
         return null;
+    }
+
+    /**
+     * Aplica solo propuestas ALTA (autorizadas). Un batch auditado.
+     * No toca ámbito, importes, fechas, cuentas financieras ni fuerza chart_account_id.
+     *
+     * @return array<string, mixed>
+     */
+    public function applyAlta(bool $ensureTaxonomy = true): array
+    {
+        $batchId = '11f8-alta-'.now()->format('YmdHis').'-'.Str::lower(Str::random(6));
+        $beforeProgress = $this->operational->progress();
+
+        return DB::transaction(function () use ($batchId, $beforeProgress, $ensureTaxonomy) {
+            if ($ensureTaxonomy) {
+                $this->taxonomy->ensureCanonical(write: true);
+            }
+
+            $dry = $this->dryRun(ensureTaxonomyWrite: false);
+            $byGroup = collect($dry['groups'])->keyBy('grupo');
+            $appliedByGroup = [];
+            $updatedTotal = 0;
+            $skippedTotal = 0;
+            $touchedIds = [];
+
+            // Orden fijo: Super → Comida → Miranda → MYU → Auto (Remotos solo si hay ALTA).
+            foreach (['Super', 'Comida', 'Miranda', 'MYU', 'Remotos', 'Auto'] as $grupo) {
+                $g = $byGroup->get($grupo);
+                if (! $g) {
+                    $appliedByGroup[$grupo] = ['updated' => 0, 'skipped' => 0, 'candidates' => 0];
+
+                    continue;
+                }
+
+                if ($grupo === 'Auto') {
+                    $result = $this->applyAutoAlta($g, $batchId, $touchedIds);
+                } elseif ($grupo === 'Remotos') {
+                    // Solo high_ids — nunca ambiguos.
+                    $ids = array_map('intval', $g['high_ids'] ?? []);
+                    $result = $this->applyFixedDestination(
+                        $ids,
+                        (int) ($g['target_category_id'] ?? 0) ?: null,
+                        (int) ($g['target_subcategory_id'] ?? 0) ?: null,
+                        $grupo,
+                        $batchId,
+                        $touchedIds,
+                    );
+                } else {
+                    $ids = array_map('intval', $g['movement_ids'] ?? []);
+                    $result = $this->applyFixedDestination(
+                        $ids,
+                        (int) ($g['target_category_id'] ?? 0) ?: null,
+                        (int) ($g['target_subcategory_id'] ?? 0) ?: null,
+                        $grupo,
+                        $batchId,
+                        $touchedIds,
+                    );
+                }
+
+                $appliedByGroup[$grupo] = $result;
+                $updatedTotal += $result['updated'];
+                $skippedTotal += $result['skipped'];
+            }
+
+            $afterProgress = $this->operational->progress();
+            $afterDry = $this->dryRun(ensureTaxonomyWrite: false);
+
+            $summary = [
+                'batch_id' => $batchId,
+                'applied' => true,
+                'updated_total' => $updatedTotal,
+                'skipped_total' => $skippedTotal,
+                'by_group' => $appliedByGroup,
+                'before' => $beforeProgress,
+                'after' => $afterProgress,
+                'post_dry_run' => [
+                    'groups' => collect($afterDry['groups'])->map(fn ($g) => [
+                        'grupo' => $g['grupo'],
+                        'encontrados' => $g['encontrados'],
+                        'alta' => $g['propuesta_alta_confianza'],
+                        'ambiguos' => $g['ambiguos'] ?? 0,
+                    ])->all(),
+                    'summary' => $afterDry['summary'],
+                    'auto_breakdown' => $afterDry['auto_breakdown'] ?? [],
+                ],
+                'touched_ids_count' => count($touchedIds),
+            ];
+
+            $this->audit->log(
+                'classification_11f8_alta_applied',
+                null,
+                ['before' => $beforeProgress, 'dry_groups' => collect($dry['groups'])->map(fn ($g) => [
+                    'grupo' => $g['grupo'],
+                    'encontrados' => $g['encontrados'],
+                    'alta' => $g['propuesta_alta_confianza'],
+                    'ambiguos' => $g['ambiguos'] ?? 0,
+                ])->all()],
+                $summary,
+                "11F-8 apply ALTA batch {$batchId}"
+            );
+
+            return $summary;
+        });
+    }
+
+    /**
+     * @param  list<int>  $ids
+     * @param  list<int>  $touchedIds
+     * @return array{updated: int, skipped: int, candidates: int, grupo: string}
+     */
+    private function applyFixedDestination(
+        array $ids,
+        ?int $categoryId,
+        ?int $subcategoryId,
+        string $grupo,
+        string $batchId,
+        array &$touchedIds,
+    ): array {
+        $ids = array_values(array_unique(array_filter($ids)));
+        if ($categoryId === null || $ids === []) {
+            return ['updated' => 0, 'skipped' => 0, 'candidates' => count($ids), 'grupo' => $grupo];
+        }
+
+        $updated = 0;
+        $skipped = 0;
+        $movements = Movement::query()->whereIn('id', $ids)->lockForUpdate()->orderBy('id')->get();
+        foreach ($movements as $m) {
+            if (in_array($m->id, $touchedIds, true)) {
+                $skipped++;
+
+                continue;
+            }
+            $old = [
+                'category_id' => $m->category_id,
+                'subcategory_id' => $m->subcategory_id,
+                'chart_account_id' => $m->chart_account_id,
+                'scope' => $m->scope instanceof \BackedEnum ? $m->scope->value : (string) $m->scope,
+                'amount_ars' => (string) $m->amount_ars,
+                'financial_account_id' => $m->financial_account_id,
+            ];
+            if ((int) $m->category_id === (int) $categoryId && (int) ($m->subcategory_id ?? 0) === (int) ($subcategoryId ?? 0)) {
+                $skipped++;
+                $touchedIds[] = $m->id;
+
+                continue;
+            }
+
+            // Solo cat/sub — conservar chart, ámbito, importes, FA.
+            $m->update([
+                'category_id' => $categoryId,
+                'subcategory_id' => $subcategoryId,
+            ]);
+            $touchedIds[] = $m->id;
+            $updated++;
+            $this->audit->log(
+                'classification_11f8_movement',
+                $m,
+                $old,
+                [
+                    'category_id' => $categoryId,
+                    'subcategory_id' => $subcategoryId,
+                    'chart_account_id' => $m->chart_account_id,
+                    'scope' => $old['scope'],
+                    'batch_id' => $batchId,
+                    'grupo' => $grupo,
+                ],
+                "11F-8 {$batchId} {$grupo}"
+            );
+        }
+
+        return ['updated' => $updated, 'skipped' => $skipped, 'candidates' => count($ids), 'grupo' => $grupo];
+    }
+
+    /**
+     * @param  array<string, mixed>  $group
+     * @param  list<int>  $touchedIds
+     * @return array{updated: int, skipped: int, candidates: int, grupo: string, by_sub: array<string, int>}
+     */
+    private function applyAutoAlta(array $group, string $batchId, array &$touchedIds): array
+    {
+        $targetCat = $this->taxonomy->findCategory('Automotor');
+        if (! $targetCat) {
+            return ['updated' => 0, 'skipped' => 0, 'candidates' => 0, 'grupo' => 'Auto', 'by_sub' => []];
+        }
+
+        $highIds = array_map('intval', $group['high_ids'] ?? []);
+        $proposals = collect($group['proposals'] ?? [])->keyBy('id');
+        $bySub = [];
+        $updated = 0;
+        $skipped = 0;
+
+        $movements = Movement::query()->whereIn('id', $highIds)->lockForUpdate()->orderBy('id')->get();
+        foreach ($movements as $m) {
+            if (in_array($m->id, $touchedIds, true)) {
+                $skipped++;
+
+                continue;
+            }
+            $proposed = $proposals->get($m->id)['proposed_sub'] ?? $this->inferAutoSubcategory((string) $m->description);
+            if ($proposed === null || ($proposals->get($m->id)['confidence'] ?? 'ALTA') === 'BAJA') {
+                $skipped++;
+
+                continue;
+            }
+            $sub = $this->taxonomy->findSubcategory('Automotor', $proposed);
+            if (! $sub) {
+                // Crear sub faltante (p.ej. Lavado/Limpieza) sin destruir otras.
+                $sub = Subcategory::query()->create([
+                    'category_id' => $targetCat->id,
+                    'name' => $proposed,
+                    'chart_account_id' => $targetCat->chart_account_id,
+                    'is_active' => true,
+                    'sort_order' => 70,
+                ]);
+            }
+
+            $old = [
+                'category_id' => $m->category_id,
+                'subcategory_id' => $m->subcategory_id,
+                'chart_account_id' => $m->chart_account_id,
+                'scope' => $m->scope instanceof \BackedEnum ? $m->scope->value : (string) $m->scope,
+                'amount_ars' => (string) $m->amount_ars,
+                'financial_account_id' => $m->financial_account_id,
+            ];
+            if ((int) $m->category_id === (int) $targetCat->id && (int) $m->subcategory_id === (int) $sub->id) {
+                $skipped++;
+                $touchedIds[] = $m->id;
+                $bySub[$proposed] = ($bySub[$proposed] ?? 0);
+
+                continue;
+            }
+
+            $m->update([
+                'category_id' => $targetCat->id,
+                'subcategory_id' => $sub->id,
+            ]);
+            $touchedIds[] = $m->id;
+            $updated++;
+            $bySub[$proposed] = ($bySub[$proposed] ?? 0) + 1;
+            $this->audit->log(
+                'classification_11f8_movement',
+                $m,
+                $old,
+                [
+                    'category_id' => $targetCat->id,
+                    'subcategory_id' => $sub->id,
+                    'chart_account_id' => $m->chart_account_id,
+                    'scope' => $old['scope'],
+                    'batch_id' => $batchId,
+                    'grupo' => 'Auto',
+                    'proposed_sub' => $proposed,
+                ],
+                "11F-8 {$batchId} Auto → {$proposed}"
+            );
+        }
+
+        return [
+            'updated' => $updated,
+            'skipped' => $skipped,
+            'candidates' => count($highIds),
+            'grupo' => 'Auto',
+            'by_sub' => $bySub,
+        ];
     }
 
     /**

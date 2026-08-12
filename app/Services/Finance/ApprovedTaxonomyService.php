@@ -31,7 +31,7 @@ class ApprovedTaxonomyService
                 'Electricidad', 'Gas', 'Agua', 'Internet', 'Telefonía', 'Streaming', 'Otros',
             ]],
             ['name' => 'Automotor', 'scope' => 'personal', 'chart' => $expensePersonal, 'subs' => [
-                'Combustible', 'Seguro', 'Mantenimiento', 'Patente', 'Estacionamiento', 'Peajes', 'Otros',
+                'Combustible', 'Seguro', 'Mantenimiento', 'Patente', 'Estacionamiento', 'Peajes', 'Lavado/Limpieza', 'Otros',
             ]],
             ['name' => 'Gastos familiares', 'scope' => 'personal', 'chart' => $expensePersonal, 'subs' => [
                 'Miranda', 'Otros',

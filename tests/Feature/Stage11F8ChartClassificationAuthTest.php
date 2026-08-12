@@ -426,6 +426,62 @@ test('dry-run estructural no aplica masa y exporta ambiguos', function () {
         ->assertSessionHas('classification_dry_run');
 });
 
+test('apply ALTA incluye Lavado C3 y no toca ambito ni importes', function () {
+    $admin = makeAdmin();
+    $this->actingAs($admin);
+    app(\App\Services\Finance\ApprovedTaxonomyService::class)->ensureCanonical(true);
+
+    $super = Category::query()->create(['name' => 'Super', 'scope' => 'personal', 'is_active' => true, 'sort_order' => 9]);
+    $auto = Category::query()->create(['name' => 'Auto', 'scope' => 'personal', 'is_active' => true, 'sort_order' => 8]);
+    $comida = Category::query()->create(['name' => 'Comida', 'scope' => 'personal', 'is_active' => true, 'sort_order' => 7]);
+
+    $mSuper = makeUnclassifiedMovement([
+        'description' => 'Compra Super',
+        'category_id' => $super->id,
+        'scope' => \App\Enums\MovementScope::Personal,
+        'amount_ars' => '150.00',
+        'chart_account_id' => null,
+    ]);
+    $mLavado = makeUnclassifiedMovement([
+        'description' => 'Lavado C3',
+        'category_id' => $auto->id,
+        'scope' => \App\Enums\MovementScope::Personal,
+        'amount_ars' => '8000.00',
+        'chart_account_id' => null,
+    ]);
+    $mComida = makeUnclassifiedMovement([
+        'description' => 'Comida oficina',
+        'category_id' => $comida->id,
+        'scope' => \App\Enums\MovementScope::Professional,
+        'amount_ars' => '99.50',
+        'chart_account_id' => null,
+    ]);
+    $faBefore = $mLavado->financial_account_id;
+
+    $summary = app(\App\Services\Finance\StructuralReclassificationPlanner::class)->applyAlta(true);
+    expect($summary['applied'])->toBeTrue()
+        ->and($summary['updated_total'])->toBeGreaterThanOrEqual(3)
+        ->and($summary['batch_id'])->toStartWith('11f8-alta-');
+
+    $alimentacion = Category::query()->whereRaw('LOWER(name) = ?', ['alimentación'])->orWhereRaw('LOWER(name) = ?', ['alimentacion'])->first();
+    $automotor = Category::query()->whereRaw('LOWER(name) = ?', ['automotor'])->first();
+    $lavadoSub = Subcategory::query()->where('category_id', $automotor?->id)->where('name', 'Lavado/Limpieza')->first();
+
+    expect($mSuper->fresh()->category_id)->toBe($alimentacion?->id)
+        ->and($mComida->fresh()->category_id)->toBe($alimentacion?->id)
+        ->and($mLavado->fresh()->category_id)->toBe($automotor?->id)
+        ->and($mLavado->fresh()->subcategory_id)->toBe($lavadoSub?->id)
+        ->and($mLavado->fresh()->scope->value)->toBe('personal')
+        ->and((string) $mLavado->fresh()->amount_ars)->toBe('8000.00')
+        ->and($mLavado->fresh()->financial_account_id)->toBe($faBefore)
+        ->and($mLavado->fresh()->chart_account_id)->toBeNull()
+        ->and($mComida->fresh()->scope->value)->toBe('professional');
+
+    $dry = app(\App\Services\Finance\StructuralReclassificationPlanner::class)->dryRun(false);
+    $autoGroup = collect($dry['groups'])->firstWhere('grupo', 'Auto');
+    expect((int) ($autoGroup['ambiguos'] ?? 0))->toBe(0);
+});
+
 test('reporte clasificacion operativa por naturaleza cat sub ambito', function () {
     $admin = makeAdmin();
     $this->actingAs($admin);
