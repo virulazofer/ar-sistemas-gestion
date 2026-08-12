@@ -16,15 +16,24 @@
             </div>
         @endif
 
+        <p class="ar-muted text-sm">
+            Contado personal/ocasional: proveedor opcional (no inventar proveedores). Crédito: proveedor obligatorio.
+            Alternativa diaria: <a href="{{ route('movements.quick') }}" class="underline">Carga rápida</a>.
+        </p>
+
         <div class="grid gap-4 sm:grid-cols-2">
             <div>
                 <label class="ar-label">Proveedor</label>
-                <select name="supplier_id" class="ar-input" required>
-                    <option value="">—</option>
+                <select name="supplier_id" class="ar-input" :required="mode === 'credit'">
+                    <option value="">— Sin proveedor / ocasional —</option>
                     @foreach ($suppliers as $supplier)
                         <option value="{{ $supplier->id }}" @selected((int) old('supplier_id', $preselectedSupplier) === $supplier->id)>{{ $supplier->name }}</option>
                     @endforeach
                 </select>
+            </div>
+            <div>
+                <label class="ar-label">Contraparte (opcional, sin proveedor)</label>
+                <input type="text" name="counterparty_name" class="ar-input" value="{{ old('counterparty_name') }}" placeholder="Ej. Super, kiosco, restaurant">
             </div>
             <div>
                 <label class="ar-label">Fecha</label>

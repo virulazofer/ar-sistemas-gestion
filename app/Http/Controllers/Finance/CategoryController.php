@@ -123,11 +123,12 @@ class CategoryController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'scope' => ['required', Rule::in(['personal', 'professional', 'both'])],
-            'chart_account_id' => ['nullable', 'exists:chart_accounts,id'],
         ]);
 
         $category = Category::query()->create([
-            ...$data,
+            'name' => $data['name'],
+            'scope' => $data['scope'],
+            'chart_account_id' => null,
             'is_active' => true,
             'sort_order' => 100,
         ]);
@@ -142,11 +143,12 @@ class CategoryController extends Controller
         $data = $request->validate([
             'category_id' => ['required', 'exists:categories,id'],
             'name' => ['required', 'string', 'max:120'],
-            'chart_account_id' => ['nullable', 'exists:chart_accounts,id'],
         ]);
 
         $sub = Subcategory::query()->create([
-            ...$data,
+            'category_id' => $data['category_id'],
+            'name' => $data['name'],
+            'chart_account_id' => null,
             'is_active' => true,
             'sort_order' => 100,
         ]);

@@ -9,19 +9,41 @@ use Illuminate\Support\Facades\Cache;
 #[Fillable(['key', 'value', 'type', 'group', 'label', 'description'])]
 class Setting extends Model
 {
+    /**
+     * Cache solo arrays serializables. Nunca Eloquent: con CACHE_STORE=database
+     * deserializar modelos produce __PHP_Incomplete_Class → HTTP 500 (p.ej. /plan-de-cuentas/mapeo).
+     */
     public static function getValue(string $key, mixed $default = null): mixed
     {
-        $setting = Cache::remember("setting.{$key}", 300, fn () => static::query()->where('key', $key)->first());
+        $cacheKey = "setting.{$key}";
+        $payload = Cache::get($cacheKey);
 
-        if (! $setting) {
+        // Bust legacy caches that stored the Eloquent model (or incomplete class).
+        if (is_object($payload) || ($payload !== null && ! is_array($payload))) {
+            Cache::forget($cacheKey);
+            $payload = null;
+        }
+
+        if (! is_array($payload)) {
+            $setting = static::query()->where('key', $key)->first();
+            $payload = $setting === null
+                ? ['_miss' => true]
+                : [
+                    'type' => (string) $setting->type,
+                    'value' => $setting->value,
+                ];
+            Cache::put($cacheKey, $payload, 300);
+        }
+
+        if (! empty($payload['_miss'])) {
             return $default;
         }
 
-        return match ($setting->type) {
-            'bool', 'boolean' => filter_var($setting->value, FILTER_VALIDATE_BOOLEAN),
-            'int', 'integer' => (int) $setting->value,
-            'json' => json_decode($setting->value ?? 'null', true),
-            default => $setting->value ?? $default,
+        return match ($payload['type'] ?? 'string') {
+            'bool', 'boolean' => filter_var($payload['value'] ?? null, FILTER_VALIDATE_BOOLEAN),
+            'int', 'integer' => (int) ($payload['value'] ?? 0),
+            'json' => json_decode($payload['value'] ?? 'null', true),
+            default => $payload['value'] ?? $default,
         };
     }
 

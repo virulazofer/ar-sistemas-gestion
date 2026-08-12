@@ -31,20 +31,10 @@
         <p class="ar-muted mt-1 text-xs">Obligatoria para empresas.</p>
     </div>
 
-    <div class="grid gap-4 sm:grid-cols-2">
-        <div x-show="partyType === 'particular'" x-cloak>
-            <label class="ar-label" for="dni">DNI</label>
-            <input id="dni" name="dni" class="ar-input" value="{{ old('dni', $supplier?->dni) }}" inputmode="numeric" :required="partyType === 'particular'">
-            <p class="ar-muted mt-1 text-xs">Obligatorio para particulares (7–8 dígitos).</p>
-        </div>
-        <div>
-            <label class="ar-label" for="cuit">
-                CUIT
-                <span class="ar-muted" x-show="partyType === 'particular'" x-cloak>(opcional)</span>
-            </label>
-            <input id="cuit" name="cuit" class="ar-input" value="{{ old('cuit', $supplier?->cuit) }}" :required="partyType === 'empresa'">
-            <p class="ar-muted mt-1 text-xs" x-show="partyType === 'empresa'" x-cloak>Obligatorio para empresas (11 dígitos).</p>
-        </div>
+    <div>
+        <label class="ar-label" for="cuit">CUIT</label>
+        <input id="cuit" name="cuit" class="ar-input" value="{{ old('cuit', $supplier?->cuit) }}" required>
+        <p class="ar-muted mt-1 text-xs">Proveedores se identifican solo con CUIT (11 dígitos). No se usa DNI.</p>
     </div>
 
     <div class="grid gap-4 sm:grid-cols-2">

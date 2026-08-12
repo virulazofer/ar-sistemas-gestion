@@ -143,7 +143,7 @@ class ClientCcTimelineService
                 'affects_cc' => $affectsCc,
                 'running_balance' => $running,
                 'running_display' => UiSemantics::clientCcDisplayBalance($running),
-                'status' => $entry->status?->value ?? '',
+                'status' => $this->statusLabel($entry),
                 'dedupe_key' => 'ledger:'.$entry->id,
                 'related' => [
                     'ledger_id' => $entry->id,
@@ -294,6 +294,28 @@ class ClientCcTimelineService
         }
 
         return 'Ingreso financiero';
+    }
+
+    private function statusLabel(ClientLedgerEntry $entry): string
+    {
+        if ($entry->status?->value === 'voided') {
+            return 'Anulado';
+        }
+
+        $charge = $entry->commercialCharge;
+        if ($charge && Money::compare((string) $charge->amount_open, '0') <= 0) {
+            return 'Saldado';
+        }
+
+        if ($charge && Money::compare((string) $charge->amount_open, '0') > 0) {
+            return 'Abierto';
+        }
+
+        if ($entry->type === ClientLedgerType::Payment) {
+            return 'Cobro';
+        }
+
+        return $entry->status?->value ?? 'posted';
     }
 
     private function matchesFilter(array $row, string $filter): bool

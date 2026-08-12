@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 #[Fillable([
     'supplier_id',
+    'counterparty_name',
     'purchase_date',
     'voucher_type',
     'voucher_letter',

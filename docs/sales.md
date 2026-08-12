@@ -33,8 +33,16 @@ Rollback completo si falla cualquier paso.
 
 | Modo | Stock | CC | Finanzas |
 |------|-------|----|----------|
-| Crédito | −productos | −total | sin movimiento |
-| Contado | −productos | cargo+pago = 0 | +banco |
+| Crédito | −productos | CC IN (cargo) | sin movimiento de caja |
+| Contado | −productos | CC IN + CC OUT (historial completo; neto 0) | +caja/banco |
+| Parcial | −productos | CC IN total + CC OUT parcial | +caja por lo cobrado |
+
+**Terminología comercial (11F-7):**
+
+- **Contado** = cargo + cobro inmediato (historial CC completo, saldo neto 0) + ingreso financiero.
+- **Crédito** = solo cargo (CC IN); el cobro llega después.
+- **Pago a cuenta** = cobro que deja saldo a favor del cliente (sin inventar deuda).
+- **Cobro** ≠ **ingreso genérico**: el cobro aplica a cargos vía `ReceiptService` (CC OUT + finanzas). Desde ficha cliente usar **Nueva operación → Cobro**.
 
 ## Equipos
 

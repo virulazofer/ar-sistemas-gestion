@@ -9,18 +9,29 @@
                 @can('clients.edit')
                     <a href="{{ route('clients.edit', $client) }}" class="ar-btn ar-btn-secondary">Editar</a>
                 @endcan
-                @can('clients.regularize')
+                @role('Administrador')
                     <a href="{{ route('clients.ledger.opening.create', $client) }}" class="ar-btn ar-btn-secondary">Establecer saldo de apertura</a>
-                @endcan
+                @endrole
                 @can('clients.create')
                     <a href="{{ route('clients.ledger.adjustment.create', $client) }}" class="ar-btn ar-btn-secondary">Ajuste</a>
                 @endcan
-                @can('charges.create')
-                    <a href="{{ route('charges.create', ['client_id' => $client->id]) }}" class="ar-btn ar-btn-secondary">Nuevo cargo</a>
-                @endcan
-                @can('receipts.create')
-                    <a href="{{ route('receipts.create', ['client_id' => $client->id]) }}" class="ar-btn ar-btn-primary">Registrar cobro</a>
-                @endcan
+                @canany(['charges.create', 'receipts.create', 'sales.create'])
+                    <div class="relative" x-data="{ open: false }">
+                        <button type="button" class="ar-btn ar-btn-primary" @click="open = !open">Nueva operación</button>
+                        <div x-show="open" x-cloak @click.outside="open = false" class="ar-card absolute end-0 z-20 mt-1 min-w-[14rem] space-y-1 p-2 text-sm shadow-lg">
+                            @can('charges.create')
+                                <a href="{{ route('charges.create', ['client_id' => $client->id]) }}" class="block rounded px-2 py-1.5 hover:opacity-80">Cargo (crédito / deuda)</a>
+                            @endcan
+                            @can('receipts.create')
+                                <a href="{{ route('receipts.create', ['client_id' => $client->id]) }}" class="block rounded px-2 py-1.5 hover:opacity-80">Cobro (CC OUT + caja)</a>
+                            @endcan
+                            @can('sales.create')
+                                <a href="{{ route('sales.create', ['client_id' => $client->id]) }}" class="block rounded px-2 py-1.5 hover:opacity-80">Venta (contado/crédito)</a>
+                            @endcan
+                            <p class="ar-muted border-t px-2 pt-2 text-xs" style="border-color: var(--ar-border);">Cobro ≠ ingreso genérico: el cobro aplica a cargos y mueve CC.</p>
+                        </div>
+                    </div>
+                @endcanany
             </div>
         </div>
     </x-slot>
@@ -87,10 +98,10 @@
         </div>
     @endif
 
-    @can('clients.regularize')
+    @role('Administrador')
         <form method="POST" action="{{ route('clients.regularize', $client) }}" class="ar-card mb-4 grid gap-2 p-4 sm:grid-cols-6">
             @csrf
-            <h2 class="sm:col-span-6 font-semibold">Regularizar CC (solo autorizados · movimiento auditado)</h2>
+            <h2 class="sm:col-span-6 font-semibold">Regularizar CC (solo Administradores · movimiento auditado)</h2>
             <div>
                 <label class="ar-label">Moneda</label>
                 <select name="currency_code" class="ar-input"><option value="ARS">ARS</option><option value="USD">USD</option></select>
@@ -128,7 +139,7 @@
             </div>
             <div class="sm:col-span-6"><button class="ar-btn ar-btn-secondary">Registrar regularización</button></div>
         </form>
-    @endcan
+    @endrole
 
     <div class="ar-card overflow-x-auto">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3" style="border-color: var(--ar-border);">

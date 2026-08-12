@@ -66,7 +66,21 @@
                     @endforeach
                 </ul>
             @endif
-            @if ($assistant['subcategories'])
+            @if ($assistant['subcategories_by_category'] ?? [])
+                <p class="text-xs font-semibold">Subcategorías (agrupadas)</p>
+                <div class="max-h-64 space-y-2 overflow-y-auto text-sm">
+                    @foreach ($assistant['subcategories_by_category'] as $catName => $rows)
+                        <div>
+                            <p class="font-medium">{{ $catName }}</p>
+                            <ul class="list-disc ps-5">
+                                @foreach ($rows as $row)
+                                    <li>{{ $row['name'] }} · movs sin cuenta: {{ $row['movement_count'] }}</li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    @endforeach
+                </div>
+            @elseif ($assistant['subcategories'])
                 <p class="text-xs font-semibold">Subcategorías</p>
                 <ul class="list-disc ps-5 text-sm">
                     @foreach ($assistant['subcategories'] as $row)

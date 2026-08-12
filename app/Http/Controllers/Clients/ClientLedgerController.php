@@ -39,29 +39,16 @@ class ClientLedgerController extends Controller
         return redirect()->route('clients.show', $client)->with('status', 'Cargo registrado.');
     }
 
-    public function createPayment(Client $client): View
+    public function createPayment(Client $client): RedirectResponse
     {
-        $accounts = FinancialAccount::query()->with('currency')->active()->orderBy('name')->get();
-
-        return view('clients.ledger.payment', compact('client', 'accounts'));
+        // Cobro formal = ReceiptService (CC OUT + finanzas + aplicaciones). No ingreso genérico.
+        return redirect()->route('receipts.create', ['client_id' => $client->id]);
     }
 
     public function storePayment(Request $request, Client $client): RedirectResponse
     {
-        $data = $request->validate([
-            'financial_account_id' => ['required', 'exists:financial_accounts,id'],
-            'amount' => ['required', 'numeric', 'gt:0'],
-            'entry_date' => ['required', 'date'],
-            'description' => ['nullable', 'string', 'max:255'],
-        ]);
-
-        try {
-            $this->ledger->registerPayment($client, $data);
-        } catch (\Throwable $e) {
-            return back()->withInput()->withErrors(['amount' => $e->getMessage()]);
-        }
-
-        return redirect()->route('clients.show', $client)->with('status', 'Pago registrado (CC + finanzas).');
+        return redirect()->route('receipts.create', ['client_id' => $client->id])
+            ->with('status', 'Usá Cobro (no ingreso genérico) para registrar pagos de cliente.');
     }
 
     public function createCredit(Client $client): View

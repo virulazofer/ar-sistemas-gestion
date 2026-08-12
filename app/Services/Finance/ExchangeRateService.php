@@ -397,7 +397,22 @@ class ExchangeRateService
      *   provider: ?string
      * }>
      */
-    public function chartPoints(?Carbon $from = null, ?Carbon $to = null, int $limit = 120): array
+    /**
+     * Puntos del gráfico en el rango From/To exacto (sin truncar al inicio).
+     * Si hay más de $maxPoints, subsamplea uniformemente preservando primero y último.
+     * Los huecos (días sin cotización) son válidos: no se inventan puntos.
+     *
+     * @return list<array{
+     *   label: string,
+     *   date: string,
+     *   value: float,
+     *   buy: ?float,
+     *   sell: float,
+     *   source: string,
+     *   provider: ?string
+     * }>
+     */
+    public function chartPoints(?Carbon $from = null, ?Carbon $to = null, int $maxPoints = 500): array
     {
         $query = ExchangeRate::query()
             ->where('rate_type', 'official_sell')
@@ -411,17 +426,32 @@ class ExchangeRateService
             $query->where('rate_at', '<=', $to->copy()->endOfDay());
         }
 
-        return $query->limit($limit)->get(['rate_at', 'rate', 'rate_buy', 'source', 'provider'])
-            ->map(fn (ExchangeRate $r) => [
-                'label' => $r->rate_at?->format('d/m') ?? '',
-                'date' => $r->rate_at?->format('d/m/Y') ?? '',
-                'value' => (float) $r->rate,
-                'buy' => $r->rate_buy !== null ? (float) $r->rate_buy : null,
-                'sell' => (float) $r->rate,
-                'source' => (string) ($r->source ?? ''),
-                'provider' => $r->provider,
-            ])
-            ->all();
+        $rows = $query->get(['rate_at', 'rate', 'rate_buy', 'source', 'provider']);
+        $points = $rows->map(fn (ExchangeRate $r) => [
+            'label' => $r->rate_at?->format('d/m') ?? '',
+            'date' => $r->rate_at?->format('d/m/Y') ?? '',
+            'value' => (float) $r->rate,
+            'buy' => $r->rate_buy !== null ? (float) $r->rate_buy : null,
+            'sell' => (float) $r->rate,
+            'source' => (string) ($r->source ?? ''),
+            'provider' => $r->provider,
+        ])->values()->all();
+
+        $count = count($points);
+        if ($count <= $maxPoints || $maxPoints < 2) {
+            return $points;
+        }
+
+        $sampled = [];
+        $lastIndex = $count - 1;
+        for ($i = 0; $i < $maxPoints; $i++) {
+            $idx = (int) round($i * $lastIndex / ($maxPoints - 1));
+            $sampled[$idx] = $points[$idx];
+        }
+
+        ksort($sampled);
+
+        return array_values($sampled);
     }
 
     public function findDuplicate(

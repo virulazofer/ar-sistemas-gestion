@@ -184,9 +184,18 @@ class ChartAccountController extends Controller
     public function update(Request $request, ChartAccount $chart_account): RedirectResponse
     {
         $data = $this->validated($request, $chart_account->id);
-        if (($data['parent_id'] ?? null) == $chart_account->id) {
+        $parentId = isset($data['parent_id']) && $data['parent_id'] !== '' && $data['parent_id'] !== null
+            ? (int) $data['parent_id']
+            : null;
+        $data['parent_id'] = $parentId;
+
+        if ($parentId === (int) $chart_account->id) {
             return back()->withInput()->withErrors(['parent_id' => 'Una cuenta no puede ser padre de sí misma.']);
         }
+        if ($parentId !== null && $this->isDescendant($chart_account, $parentId)) {
+            return back()->withInput()->withErrors(['parent_id' => 'No se puede asignar como padre una cuenta hija (ciclo).']);
+        }
+
         $old = $chart_account->toArray();
         $chart_account->update($data);
         $this->audit->log('chart_account_updated', $chart_account, $old, $chart_account->toArray(), 'Cuenta contable actualizada');

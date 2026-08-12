@@ -32,12 +32,7 @@
                     <option value="professional">Profesional</option>
                     <option value="both">Ambos</option>
                 </select>
-                <select name="chart_account_id" class="ar-input">
-                    <option value="">Plan de cuentas (opcional)</option>
-                    @foreach ($chartAccounts as $ca)
-                        <option value="{{ $ca->id }}">{{ $ca->code }} — {{ $ca->name }} ({{ $ca->typeLabel() }})</option>
-                    @endforeach
-                </select>
+                <p class="ar-muted text-xs">La cuenta contable se asigna en <a href="{{ route('chart-accounts.mapping') }}" class="underline">Mapeo al plan</a> (no acá).</p>
                 <button class="ar-btn ar-btn-primary">Crear categoría</button>
             </form>
 
@@ -50,12 +45,7 @@
                     @endforeach
                 </select>
                 <input name="name" class="ar-input" placeholder="Nombre" required>
-                <select name="chart_account_id" class="ar-input">
-                    <option value="">Plan de cuentas (opcional)</option>
-                    @foreach ($chartAccounts as $ca)
-                        <option value="{{ $ca->id }}">{{ $ca->code }} — {{ $ca->name }} ({{ $ca->typeLabel() }})</option>
-                    @endforeach
-                </select>
+                <p class="ar-muted text-xs">Mapeo contable: solo en la herramienta de mapeo.</p>
                 <button class="ar-btn ar-btn-primary">Crear subcategoría</button>
             </form>
         @endcan

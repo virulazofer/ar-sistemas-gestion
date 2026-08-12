@@ -125,6 +125,11 @@ class ClientController extends Controller
 
     public function regularize(Request $request, Client $client): RedirectResponse
     {
+        // Defensa en profundidad: además de permission:clients.regularize, solo Administrador.
+        if (! $request->user()?->hasRole('Administrador')) {
+            abort(403, 'Regularizar CC es exclusivo de Administradores.');
+        }
+
         $data = $request->validate([
             'currency_code' => ['required', Rule::in(['ARS', 'USD'])],
             'amount' => ['required', 'numeric', 'gt:0'],

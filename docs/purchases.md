@@ -38,6 +38,8 @@ Estados: `posted` \| `voided`.
 
 Evita duplicar la salida: la compra contado *es* el pago efectivo.
 
+**11F-7:** proveedor opcional en contado personal/ocasional (`counterparty_name`). No inventar proveedores para Super/Comidas/kiosco. Crédito sigue exigiendo proveedor (CC). Identificación de proveedores: **CUIT obligatorio** (sin DNI).
+
 ### Compra a crédito
 
 1. Registra compra + líneas.

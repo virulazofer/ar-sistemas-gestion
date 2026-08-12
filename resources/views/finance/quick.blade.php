@@ -176,8 +176,10 @@
                         </select>
                     </div>
                     <label class="flex items-center gap-2 text-sm">
-                        <input type="checkbox" name="apply_to_cc" id="apply_to_cc" value="1" x-model="applyToCc" @checked(old('apply_to_cc', $decision['apply_to_cc'] ?? false))>
-                        Aplicar a cuenta corriente (cobro / cargos abiertos)
+                        <input type="checkbox" name="apply_to_cc" id="apply_to_cc" value="1" x-model="applyToCc" @checked(old('apply_to_cc', $decision['apply_to_cc'] ?? ($preselectClient ? true : false)))>
+                        <span x-text="applyToCc ? 'Cobro a CC (aplica cargos · no es ingreso genérico)' : 'Aplicar a cuenta corriente (cobro / cargos abiertos)'">
+                            Aplicar a cuenta corriente (cobro / cargos abiertos)
+                        </span>
                     </label>
                     <p class="ar-muted text-xs" x-show="applyToCc">
                         Un solo ingreso financiero. Deuda abierta ({{ $currencyHint }}): {{ number_format((float) $openDebt, 2, ',', '.') }}

@@ -46,7 +46,12 @@ class PurchaseController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'supplier_id' => ['required', 'exists:suppliers,id'],
+            'supplier_id' => [
+                Rule::requiredIf($request->input('payment_mode') === 'credit'),
+                'nullable',
+                'exists:suppliers,id',
+            ],
+            'counterparty_name' => ['nullable', 'string', 'max:180'],
             'purchase_date' => ['required', 'date'],
             'voucher_type' => ['nullable', 'string', 'max:32'],
             'voucher_letter' => ['nullable', 'string', 'max:4'],

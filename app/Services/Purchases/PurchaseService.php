@@ -36,7 +36,8 @@ class PurchaseService
 
     /**
      * @param  array{
-     *   supplier_id: int,
+     *   supplier_id?: int|null,
+     *   counterparty_name?: string|null,
      *   purchase_date?: string,
      *   voucher_type?: string|null,
      *   voucher_letter?: string|null,
@@ -65,14 +66,28 @@ class PurchaseService
     public function create(array $data): Purchase
     {
         return DB::transaction(function () use ($data) {
-            $supplier = Supplier::query()->lockForUpdate()->findOrFail($data['supplier_id']);
-            if (! $supplier->isActive()) {
-                throw new InvalidArgumentException('El proveedor no está activo.');
+            $supplierId = ! empty($data['supplier_id']) ? (int) $data['supplier_id'] : null;
+            $counterparty = trim((string) ($data['counterparty_name'] ?? ''));
+            $counterparty = $counterparty !== '' ? $counterparty : null;
+
+            $supplier = null;
+            if ($supplierId) {
+                $supplier = Supplier::query()->lockForUpdate()->findOrFail($supplierId);
+                if (! $supplier->isActive()) {
+                    throw new InvalidArgumentException('El proveedor no está activo.');
+                }
             }
 
             $mode = $data['payment_mode'];
             if (! in_array($mode, [Purchase::MODE_CASH, Purchase::MODE_CREDIT], true)) {
                 throw new InvalidArgumentException('Modo de pago inválido (cash|credit).');
+            }
+            if ($mode === Purchase::MODE_CREDIT && ! $supplier) {
+                throw new InvalidArgumentException('Compra a crédito requiere proveedor (CC proveedor).');
+            }
+            if (! $supplier && $counterparty === null) {
+                // Contado personal/ocasional: no inventar proveedor; contraparte libre opcional.
+                $counterparty = 'Compra ocasional / personal';
             }
 
             $items = $data['items'] ?? [];
@@ -148,8 +163,11 @@ class PurchaseService
 
             $totalEquiv = $this->equivalents($currency->code, $total, $rate);
 
+            $partyLabel = $supplier?->name ?? $counterparty ?? 'Sin proveedor';
+
             $purchase = Purchase::query()->create([
-                'supplier_id' => $supplier->id,
+                'supplier_id' => $supplier?->id,
+                'counterparty_name' => $supplier ? null : $counterparty,
                 'purchase_date' => $data['purchase_date'] ?? now()->toDateString(),
                 'voucher_type' => $data['voucher_type'] ?? null,
                 'voucher_letter' => $data['voucher_letter'] ?? null,
@@ -188,13 +206,13 @@ class PurchaseService
 
                 $movement = $this->movements->createSimple([
                     'type' => 'expense',
-                    'scope' => 'professional',
+                    'scope' => $supplier ? 'professional' : 'personal',
                     'financial_account_id' => $account->id,
                     'amount' => $total,
                     'movement_date' => $purchase->purchase_date->toDateString(),
-                    'description' => 'Compra contado #'.$purchase->id.' — '.$supplier->name,
+                    'description' => 'Compra contado #'.$purchase->id.' — '.$partyLabel,
                     'exchange_rate_id' => $fx['id'],
-                    'supplier_id' => $supplier->id,
+                    'supplier_id' => $supplier?->id,
                 ]);
 
                 $purchase->update([

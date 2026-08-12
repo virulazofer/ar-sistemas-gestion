@@ -129,31 +129,64 @@ class ChartAccountMappingService
             ->orderBy('sort_order')
             ->get();
 
+        $catIds = $categories->pluck('id')->all();
+        $subIds = $subs->pluck('id')->all();
+
+        $catCounts = $catIds === []
+            ? collect()
+            : Movement::query()
+                ->posted()
+                ->whereNull('chart_account_id')
+                ->whereIn('category_id', $catIds)
+                ->selectRaw('category_id, COUNT(*) as cnt')
+                ->groupBy('category_id')
+                ->pluck('cnt', 'category_id');
+
+        $subCounts = $subIds === []
+            ? collect()
+            : Movement::query()
+                ->posted()
+                ->whereNull('chart_account_id')
+                ->whereIn('subcategory_id', $subIds)
+                ->selectRaw('subcategory_id, COUNT(*) as cnt')
+                ->groupBy('subcategory_id')
+                ->pluck('cnt', 'subcategory_id');
+
         $catRows = [];
         foreach ($categories as $cat) {
             $catRows[] = [
                 'id' => $cat->id,
                 'name' => $cat->name,
                 'scope' => $cat->scope,
-                'movement_count' => Movement::query()->posted()->where('category_id', $cat->id)->whereNull('chart_account_id')->count(),
+                'movement_count' => (int) ($catCounts[$cat->id] ?? 0),
+            ];
+        }
+
+        // Agrupar subcategorías por categoría para el asistente (~695 movs sin cuenta).
+        $groupedSubs = [];
+        foreach ($subs as $sub) {
+            $catName = $sub->category?->name ?? '—';
+            $groupedSubs[$catName][] = [
+                'id' => $sub->id,
+                'name' => $sub->name,
+                'category_id' => $sub->category_id,
+                'category_name' => $catName,
+                'movement_count' => (int) ($subCounts[$sub->id] ?? 0),
             ];
         }
 
         $subRows = [];
-        foreach ($subs as $sub) {
-            $subRows[] = [
-                'id' => $sub->id,
-                'name' => $sub->name,
-                'category_id' => $sub->category_id,
-                'category_name' => $sub->category?->name ?? '—',
-                'movement_count' => Movement::query()->posted()->where('subcategory_id', $sub->id)->whereNull('chart_account_id')->count(),
-            ];
+        foreach ($groupedSubs as $rows) {
+            foreach ($rows as $row) {
+                $subRows[] = $row;
+            }
         }
 
         return [
             'total_unmapped' => count($catRows) + count($subRows),
             'categories' => $catRows,
             'subcategories' => $subRows,
+            'subcategories_by_category' => $groupedSubs,
         ];
     }
 

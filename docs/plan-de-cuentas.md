@@ -61,6 +61,16 @@ Queda auditoría `chart_account_deleted`.
 - Herramienta de mapeo: asignar cat/sub, defaults por tipo, crear cuenta inline, preview/aplicar
 - Alta/edición con padre, tipo, código, vista de impacto (“usado por”) y eliminación real
 
+## UX cotidiana (11F-7)
+
+- En **Categorías** solo se elige categoría/subcategoría. La cuenta contable se asigna en **Mapeo al plan**.
+- Categorías históricas Excel (**Super**, **Comidas**, **Miranda**, **Servicios**, etc.) son clasificación operativa importada (`excel_name`), no cuentas del plan. Se mapean al plan desde el asistente.
+- Jerarquía del **plan**: raíces permitidas (`parent_id` vacío); reparent con guarda de ciclos.
+
+## Cache de settings
+
+`Setting::getValue` cachea solo arrays `{type,value}`. Nunca modelos Eloquent: con `CACHE_STORE=database` provocaban `__PHP_Incomplete_Class` y HTTP 500 en `/plan-de-cuentas/mapeo`.
+
 ## Impacto
 
 Al editar una cuenta se muestra cuántas categorías, subcategorías, movimientos e hijas la referencian. Cambiar el mapeo **no** recalcula FX congelado ni toca histórico 11E/11E-R.

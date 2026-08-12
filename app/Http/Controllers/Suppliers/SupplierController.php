@@ -103,6 +103,7 @@ class SupplierController extends Controller
     {
         $partyType = (string) $request->input('party_type', 'particular');
 
+        // Proveedores: identificación por CUIT (no DNI). Particular puede existir, pero sin DNI.
         $data = $request->validate([
             'name' => ['required', 'string', 'max:180'],
             'party_type' => ['required', Rule::enum(\App\Enums\PartyType::class)],
@@ -113,18 +114,10 @@ class SupplierController extends Controller
                 'max:180',
             ],
             'cuit' => [
-                Rule::requiredIf($partyType === \App\Enums\PartyType::Empresa->value),
-                'nullable',
+                'required',
                 'string',
                 'max:20',
                 new Cuit,
-            ],
-            'dni' => [
-                Rule::requiredIf($partyType === \App\Enums\PartyType::Particular->value),
-                'nullable',
-                'string',
-                'max:20',
-                'regex:/^\d{7,8}$/',
             ],
             'tax_condition' => ['required', Rule::enum(\App\Enums\TaxCondition::class)],
             'phone' => ['nullable', 'string', 'max:50'],
@@ -136,6 +129,7 @@ class SupplierController extends Controller
         ]);
 
         $data['cuit'] = Cuit::normalize($data['cuit'] ?? null);
+        $data['dni'] = null;
 
         return $data;
     }

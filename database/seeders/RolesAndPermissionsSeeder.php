@@ -38,7 +38,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'accounts.view', 'accounts.create', 'accounts.edit',
             'exchange_rates.view', 'exchange_rates.create',
             'categories.view', 'categories.create', 'categories.edit',
-            'clients.view', 'clients.create', 'clients.edit', 'clients.void', 'clients.export', 'clients.regularize',
+            // clients.regularize: solo Administrador (11F-7)
+            'clients.view', 'clients.create', 'clients.edit', 'clients.void', 'clients.export',
             'documents.view', 'documents.create', 'documents.edit', 'documents.delete',
             'suppliers.view', 'suppliers.create', 'suppliers.edit', 'suppliers.void', 'suppliers.export',
             'products.view', 'products.create', 'products.edit', 'products.void', 'products.export',
