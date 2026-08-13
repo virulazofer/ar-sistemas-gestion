@@ -176,6 +176,7 @@ class ChartStructuralMigrationService
             (new \Database\Seeders\ChartAccountSeeder)->run();
             // Re-aplicar 2B por si el seeder recreó hojas vacías y las legacy ya tenían código.
             $legacy = array_merge($legacy, ['post_seed_pass' => $this->correctLegacyAssetRoots()]);
+            $legacy['result_root_cleanup'] = $this->cleanupEmptyResultRoot();
 
             $this->taxonomy->ensureCanonical(write: true);
             $remap = $this->compat->remapMasters(write: true);
@@ -240,6 +241,31 @@ class ChartStructuralMigrationService
         });
 
         return $result;
+    }
+
+    /**
+     * Elimina raíz 6 Resultados (legado) si está vacía (sin movimientos/hijos/refs).
+     *
+     * @return array{status:string,id?:int,deps?:array<string,int>}
+     */
+    public function cleanupEmptyResultRoot(): array
+    {
+        $acc = ChartAccount::query()->where('code', '6')->whereNull('parent_id')->first();
+        if (! $acc) {
+            return ['status' => 'absent'];
+        }
+        $deps = $this->chartDependencies($acc);
+        $total = $deps['movements'] + $deps['children'] + $deps['categories'] + $deps['subcategories'] + $deps['financial_accounts'];
+        if ($total > 0) {
+            $acc->update(['is_active' => false, 'is_protected' => false, 'name' => 'Resultados (legado)']);
+
+            return ['status' => 'skipped_has_refs', 'id' => $acc->id, 'deps' => $deps];
+        }
+        $snap = $acc->toArray();
+        $acc->delete();
+        $this->audit->log('chart_2b_delete_empty_result_root', null, $snap, ['reason' => 'empty_legacy_root_6'], '2B+: eliminada raíz legado Resultados vacía');
+
+        return ['status' => 'deleted', 'id' => (int) $snap['id'], 'deps' => $deps];
     }
 
     /**

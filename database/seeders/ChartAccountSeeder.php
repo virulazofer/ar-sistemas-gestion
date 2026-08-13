@@ -14,11 +14,22 @@ class ChartAccountSeeder extends Seeder
 {
     public function run(): void
     {
-        // Desactivar raíz legado "Resultados" si existía.
-        ChartAccount::query()
+        // Raíz legado "Resultados": desactivar; si no tiene refs/hijos, eliminar para dejar exactamente 5 raíces.
+        $legacyResult = ChartAccount::query()
             ->where('code', '6')
             ->whereNull('parent_id')
-            ->update(['is_active' => false, 'is_protected' => false, 'name' => 'Resultados (legado)']);
+            ->first();
+        if ($legacyResult) {
+            $legacyResult->update(['is_active' => false, 'is_protected' => false, 'name' => 'Resultados (legado)']);
+            $hasRefs = \App\Models\Movement::query()->where('chart_account_id', $legacyResult->id)->exists()
+                || ChartAccount::query()->where('parent_id', $legacyResult->id)->exists()
+                || \App\Models\Category::query()->where('chart_account_id', $legacyResult->id)->exists()
+                || \App\Models\Subcategory::query()->where('chart_account_id', $legacyResult->id)->exists()
+                || \App\Models\FinancialAccount::query()->where('chart_account_id', $legacyResult->id)->exists();
+            if (! $hasRefs) {
+                $legacyResult->delete();
+            }
+        }
 
         $tree = $this->definition();
         foreach ($tree as $node) {

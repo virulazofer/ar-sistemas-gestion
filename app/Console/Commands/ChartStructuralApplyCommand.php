@@ -49,7 +49,10 @@ class ChartStructuralApplyCommand extends Command
         );
 
         if ($json = $this->option('json')) {
-            $rel = ltrim((string) $json, '/\\');
+            $rel = ltrim(str_replace('\\', '/', (string) $json), '/');
+            if (str_starts_with($rel, 'storage/app/')) {
+                $rel = substr($rel, strlen('storage/app/'));
+            }
             Storage::disk('local')->put($rel, json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
             $this->line('JSON: storage/app/'.$rel);
         }
