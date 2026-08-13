@@ -56,7 +56,7 @@ Automático por tipo (sin mapeo por movimiento):
 
 ## Compatibilidad
 
-Tablas `categories` / `subcategories` se mantienen en migración progresiva (dual-read/dual-write). La UX cotidiana usa el plan (Concepto). Menú simplificado: **Plan de cuentas · Cuentas financieras · Clasificar movimientos (N)**.
+Tablas `categories` / `subcategories` se mantienen en migración progresiva (dual-read/dual-write). La UX cotidiana usa el plan (Concepto). Menú bajo Plan: **Ver plan · Pendientes de clasificación (N si >0) · Asignación al plan · Reglas automáticas**.
 
 ## Dry-run / Apply Fase 1
 

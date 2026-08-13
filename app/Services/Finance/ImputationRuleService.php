@@ -129,89 +129,206 @@ class ImputationRuleService
     }
 
     /**
-     * Preview de aplicar una regla a movimientos sin cuenta (o a IDs dados).
+     * Preview de aplicar una regla a movimientos (o a IDs dados).
+     * Por defecto no sobrescribe categoría/sub/plan ya confirmados.
      *
      * @param  list<int>|null  $movementIds
-     * @return array{would_affect: int, sample: list<array{id: int, date: string, description: ?string}>}
+     * @return array{
+     *   matched: int,
+     *   manual: int,
+     *   would_change: int,
+     *   intact: int,
+     *   would_affect: int,
+     *   overwrite_manual: bool,
+     *   sample: list<array{id: int, date: string, description: ?string, status: string}>
+     * }
      */
-    public function previewApply(ImputationRule $rule, ?array $movementIds = null, bool $onlyUnassigned = true): array
-    {
+    public function previewApply(
+        ImputationRule $rule,
+        ?array $movementIds = null,
+        bool $onlyUnassigned = true,
+        bool $overwriteManual = false,
+    ): array {
         $query = Movement::query()->posted()->whereIn('type', ['income', 'expense']);
-        if ($onlyUnassigned) {
-            $query->whereNull('chart_account_id');
-        }
         if ($movementIds !== null) {
             $query->whereIn('id', $movementIds);
         }
 
         $candidates = $query->with('category')->orderBy('id')->get();
-        $matched = [];
+        $matched = 0;
+        $manual = 0;
+        $wouldChange = 0;
+        $intact = 0;
+        $sample = [];
+
         foreach ($candidates as $m) {
             $type = $m->type instanceof \BackedEnum ? $m->type->value : (string) $m->getRawOriginal('type');
-            if ($this->ruleMatches($rule, $m->description, $type, $m->category?->name)) {
-                $matched[] = $m;
+            if (! $this->ruleMatches($rule, $m->description, $type, $m->category?->name)) {
+                continue;
+            }
+
+            $matched++;
+            $payload = $this->buildApplyPayload($rule, $m, $overwriteManual, $onlyUnassigned);
+            if ($payload['status'] === 'manual') {
+                $manual++;
+            } elseif ($payload['status'] === 'would_change') {
+                $wouldChange++;
+            } else {
+                $intact++;
+            }
+
+            if (count($sample) < 25) {
+                $sample[] = [
+                    'id' => $m->id,
+                    'date' => $m->movement_date?->toDateString() ?? '',
+                    'description' => $m->description,
+                    'status' => $payload['status'],
+                ];
             }
         }
 
-        $sample = [];
-        foreach (array_slice($matched, 0, 25) as $m) {
-            $sample[] = [
-                'id' => $m->id,
-                'date' => $m->movement_date?->toDateString() ?? '',
-                'description' => $m->description,
-            ];
-        }
-
-        return ['would_affect' => count($matched), 'sample' => $sample];
+        return [
+            'matched' => $matched,
+            'manual' => $manual,
+            'would_change' => $wouldChange,
+            'intact' => $intact,
+            'would_affect' => $wouldChange,
+            'overwrite_manual' => $overwriteManual,
+            'sample' => $sample,
+        ];
     }
 
     /**
      * @param  list<int>|null  $movementIds
-     * @return array{updated: int}
+     * @return array{updated: int, manual_skipped: int, intact: int}
      */
-    public function apply(ImputationRule $rule, ?array $movementIds = null, bool $onlyUnassigned = true): array
-    {
-        return DB::transaction(function () use ($rule, $movementIds, $onlyUnassigned) {
-            $preview = $this->previewApply($rule, $movementIds, $onlyUnassigned);
+    public function apply(
+        ImputationRule $rule,
+        ?array $movementIds = null,
+        bool $onlyUnassigned = true,
+        bool $overwriteManual = false,
+    ): array {
+        return DB::transaction(function () use ($rule, $movementIds, $onlyUnassigned, $overwriteManual) {
+            $preview = $this->previewApply($rule, $movementIds, $onlyUnassigned, $overwriteManual);
             $query = Movement::query()->posted()->whereIn('type', ['income', 'expense'])->lockForUpdate();
-            if ($onlyUnassigned) {
-                $query->whereNull('chart_account_id');
-            }
             if ($movementIds !== null) {
                 $query->whereIn('id', $movementIds);
             }
 
             $updated = 0;
+            $manualSkipped = 0;
+            $intact = 0;
             foreach ($query->with('category')->get() as $m) {
                 $type = $m->type instanceof \BackedEnum ? $m->type->value : (string) $m->getRawOriginal('type');
                 if (! $this->ruleMatches($rule, $m->description, $type, $m->category?->name)) {
                     continue;
                 }
 
-                $payload = [];
-                if ($rule->target_category_id) {
-                    $payload['category_id'] = $rule->target_category_id;
-                }
-                if ($rule->target_subcategory_id) {
-                    $payload['subcategory_id'] = $rule->target_subcategory_id;
-                }
-                if ($rule->target_chart_account_id) {
-                    $payload['chart_account_id'] = $rule->target_chart_account_id;
-                }
-                if ($payload === []) {
+                $built = $this->buildApplyPayload($rule, $m, $overwriteManual, $onlyUnassigned);
+                if ($built['status'] === 'manual') {
+                    $manualSkipped++;
+
                     continue;
                 }
-                $m->update($payload);
+                if ($built['status'] !== 'would_change' || $built['payload'] === []) {
+                    $intact++;
+
+                    continue;
+                }
+
+                $m->update($built['payload']);
                 $updated++;
             }
 
             $rule->cached_match_count = $this->countMatches($rule);
             $rule->save();
 
-            $this->audit->log('imputation_rule_applied', $rule, $preview, ['updated' => $updated], 'Regla de imputación aplicada');
+            $this->audit->log('imputation_rule_applied', $rule, $preview, [
+                'updated' => $updated,
+                'manual_skipped' => $manualSkipped,
+                'intact' => $intact,
+                'overwrite_manual' => $overwriteManual,
+            ], 'Regla de clasificación automática aplicada');
 
-            return ['updated' => $updated];
+            return [
+                'updated' => $updated,
+                'manual_skipped' => $manualSkipped,
+                'intact' => $intact,
+            ];
         });
+    }
+
+    /**
+     * @return array{status: string, payload: array<string, mixed>}
+     */
+    private function buildApplyPayload(
+        ImputationRule $rule,
+        Movement $movement,
+        bool $overwriteManual,
+        bool $onlyUnassigned,
+    ): array {
+        $payload = [];
+        $blockedManual = false;
+
+        if ($rule->target_category_id) {
+            $current = $movement->category_id ? (int) $movement->category_id : null;
+            $target = (int) $rule->target_category_id;
+            if ($current === null) {
+                $payload['category_id'] = $target;
+            } elseif ($current !== $target) {
+                if ($overwriteManual) {
+                    $payload['category_id'] = $target;
+                } else {
+                    $blockedManual = true;
+                }
+            }
+        }
+
+        if ($rule->target_subcategory_id) {
+            $current = $movement->subcategory_id ? (int) $movement->subcategory_id : null;
+            $target = (int) $rule->target_subcategory_id;
+            if ($current === null) {
+                $payload['subcategory_id'] = $target;
+            } elseif ($current !== $target) {
+                if ($overwriteManual) {
+                    $payload['subcategory_id'] = $target;
+                } else {
+                    $blockedManual = true;
+                }
+            }
+        }
+
+        if ($rule->target_chart_account_id) {
+            $current = $movement->chart_account_id ? (int) $movement->chart_account_id : null;
+            $target = (int) $rule->target_chart_account_id;
+            if ($current === null) {
+                $payload['chart_account_id'] = $target;
+            } elseif ($current !== $target) {
+                if ($overwriteManual) {
+                    $payload['chart_account_id'] = $target;
+                } else {
+                    $blockedManual = true;
+                }
+            }
+        } elseif ($onlyUnassigned && $movement->chart_account_id && $payload === [] && ! $blockedManual) {
+            // Compat: filtro histórico "solo sin plan" cuando la regla no trae chart.
+            return ['status' => 'intact', 'payload' => []];
+        }
+
+        if ($blockedManual && $payload === []) {
+            return ['status' => 'manual', 'payload' => []];
+        }
+
+        if ($payload === []) {
+            return ['status' => 'intact', 'payload' => []];
+        }
+
+        if ($blockedManual && ! $overwriteManual) {
+            // Hay campos fillables (null) pero también hay conflicto manual: no tocar.
+            return ['status' => 'manual', 'payload' => []];
+        }
+
+        return ['status' => 'would_change', 'payload' => $payload];
     }
 
     /**

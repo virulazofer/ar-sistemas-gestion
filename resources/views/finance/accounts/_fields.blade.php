@@ -100,6 +100,23 @@
         <input id="external_identifier" name="external_identifier" class="ar-input" value="{{ old('external_identifier', $account->external_identifier ?? '') }}">
     </div>
     <div>
+        <label class="ar-label" for="chart_account_id">Ubicación en el plan de cuentas</label>
+        @if ($isEdit)
+            <select id="chart_account_id" name="chart_account_id" class="ar-input">
+                <option value="">Auto según tipo</option>
+                @foreach (($chartAccounts ?? []) as $ca)
+                    <option value="{{ $ca->id }}" @selected(old('chart_account_id', $account->chart_account_id) == $ca->id)>
+                        {{ $ca->code }} — {{ $ca->name }}
+                    </option>
+                @endforeach
+            </select>
+            <p class="ar-muted mt-1 text-xs">Al crear se asigna sola por tipo (efectivo/banco/billetera/tarjeta). Podés corregirla acá.</p>
+        @else
+            <p class="ar-muted text-sm">Se asigna automáticamente según el tipo al guardar. Luego podés editarla.</p>
+        @endif
+        @error('chart_account_id')<p class="text-sm" style="color: var(--ar-danger);">{{ $message }}</p>@enderror
+    </div>
+    <div>
         <label class="ar-label" for="description">Descripción</label>
         <textarea id="description" name="description" class="ar-input" rows="3">{{ old('description', $account->description ?? '') }}</textarea>
     </div>

@@ -66,7 +66,7 @@ function makeUnclassifiedMovement(array $attrs = []): Movement
     ], $attrs));
 }
 
-test('1 alerta pendientes enlaza a clasificar movimientos reales', function () {
+test('1 alerta pendientes enlaza a pendientes de clasificación reales', function () {
     $admin = makeAdmin();
     $this->actingAs($admin);
     makeUnclassifiedMovement(['description' => 'Telecentro']);
@@ -82,9 +82,11 @@ test('1 alerta pendientes enlaza a clasificar movimientos reales', function () {
 
     $this->get(route('chart-accounts.classify'))
         ->assertOk()
-        ->assertSee('Clasificar movimientos')
+        ->assertSee('Pendientes de clasificación')
         ->assertSee('Telecentro')
-        ->assertSee('YouTube');
+        ->assertSee('YouTube')
+        ->assertDontSee('Dry-run 11F-8')
+        ->assertDontSee('Mapeo patrimonial');
 });
 
 test('2 y 3 listado paginado muestra X de Y y no limita a 10 en silencio', function () {
@@ -190,7 +192,7 @@ test('7 regla reutilizable y 8 override manual', function () {
     expect($m->fresh()->chart_account_id)->toBe($other->id);
 });
 
-test('9 cuenta financiera distinto de cuenta contable en UI', function () {
+test('9 cuenta financiera distinto de cuenta del plan en UI', function () {
     $admin = makeAdmin();
     $this->actingAs($admin);
     makeUnclassifiedMovement();
@@ -198,7 +200,7 @@ test('9 cuenta financiera distinto de cuenta contable en UI', function () {
     $this->get(route('chart-accounts.unclassified'))
         ->assertOk()
         ->assertSee('Cuenta financiera')
-        ->assertSee('Cuenta contable')
+        ->assertSee('Cuenta del plan')
         ->assertDontSee('Defaults por tipo de movimiento');
 });
 

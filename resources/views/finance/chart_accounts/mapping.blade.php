@@ -1,25 +1,28 @@
 <x-app-layout>
     <x-slot name="header">
         <div class="flex flex-wrap items-center justify-between gap-3">
-            <div class="flex items-center gap-2">
-                <h1 class="text-xl font-semibold">Mapeo patrimonial (plan de cuentas)</h1>
-                <x-page-help topic="chart_accounts.mapping" />
+            <div>
+                <p class="ar-muted text-xs">Plan de cuentas · Asignación</p>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-xl font-semibold">Asignación al plan de cuentas</h1>
+                    <x-page-help topic="chart_accounts.mapping" />
+                </div>
             </div>
             <div class="flex flex-wrap gap-2">
-                <a href="{{ route('chart-accounts.index') }}" class="ar-btn ar-btn-secondary">Volver</a>
-                <a href="{{ route('chart-accounts.classify') }}" class="ar-btn ar-btn-secondary">Clasificar movimientos</a>
-                <a href="{{ route('imputation-rules.index') }}" class="ar-btn ar-btn-secondary">Reglas de imputación</a>
+                @include('finance.chart_accounts._plan_tools_nav', ['progress' => $progress])
                 @can('categories.create')
-                    <a href="{{ route('chart-accounts.create', ['return' => 'mapping']) }}" class="ar-btn ar-btn-primary">Crear cuenta inline</a>
+                    <a href="{{ route('chart-accounts.create', ['return' => 'mapping']) }}" class="ar-btn ar-btn-primary text-xs">Crear cuenta inline</a>
                 @endcan
             </div>
         </div>
     </x-slot>
 
     <p class="ar-muted mb-4 text-sm">
-        Reglas dinámicas: al crear movimientos se resuelve subcategoría → categoría → regla de imputación → tipo → sin asignar.
-        Materializar en movimientos históricos solo con <strong>preview + aplicar</strong>.
-        Distinción: <strong>cuenta contable</strong> ≠ <strong>cuenta financiera</strong>.
+        Vinculá categorías y subcategorías con cuentas del plan.
+        Precedencia: manual explícito → subcategoría → categoría → regla automática / tipo → pendiente.
+        Materializar en movimientos históricos solo con <strong>vista previa + confirmar</strong>.
+        Por defecto <strong>no</strong> se sobrescribe una clasificación ya confirmada.
+        Distinción: <strong>cuenta del plan</strong> ≠ <strong>cuenta financiera</strong>.
     </p>
 
     <div class="ar-card mb-4 grid gap-3 p-4 sm:grid-cols-4 text-sm">
@@ -31,7 +34,7 @@
 
     @if ($unassignedMovements > 0)
         <a href="{{ route('chart-accounts.classify') }}" class="mb-4 block rounded border p-3 text-sm" style="border-color: var(--ar-danger, #b91c1c); color: var(--ar-danger, #b91c1c);">
-            Alerta: <strong>{{ $unassignedMovements }}</strong> movimientos sin categoría operativa — Clasificar movimientos
+            Alerta: <strong>{{ $unassignedMovements }}</strong> movimientos sin categoría operativa — Pendientes de clasificación
         </a>
     @endif
 
@@ -42,10 +45,10 @@
     <div class="mb-6 grid gap-4 lg:grid-cols-2">
         <form method="POST" action="{{ route('chart-accounts.mapping.type-defaults') }}" class="ar-card space-y-3 p-4">
             @csrf
-            <h2 class="font-semibold">Reglas de imputación por tipo</h2>
-            <p class="ar-muted text-xs">Equivalente operativo a «defaults por tipo»: se guardan también como reglas reutilizables.</p>
+            <h2 class="font-semibold">Defaults por tipo (vía reglas)</h2>
+            <p class="ar-muted text-xs">Se guardan como reglas reutilizables de clasificación automática.</p>
             <div>
-                <label class="ar-label">Ingresos → cuenta contable</label>
+                <label class="ar-label">Ingresos → cuenta del plan</label>
                 <select name="income" class="ar-input">
                     <option value="">—</option>
                     @foreach ($chartAccounts as $ca)
@@ -54,7 +57,7 @@
                 </select>
             </div>
             <div>
-                <label class="ar-label">Egresos → cuenta contable</label>
+                <label class="ar-label">Egresos → cuenta del plan</label>
                 <select name="expense" class="ar-input">
                     <option value="">—</option>
                     @foreach ($chartAccounts as $ca)
@@ -62,14 +65,14 @@
                     @endforeach
                 </select>
             </div>
-            <button class="ar-btn ar-btn-secondary">Guardar reglas por tipo</button>
-            <a href="{{ route('imputation-rules.index') }}" class="ar-btn ar-btn-secondary text-xs">Administrar todas las reglas</a>
+            <button class="ar-btn ar-btn-secondary">Guardar defaults por tipo</button>
+            <a href="{{ route('imputation-rules.index') }}" class="ar-btn ar-btn-secondary text-xs">Administrar reglas automáticas</a>
         </form>
 
         <div class="ar-card space-y-3 p-4">
-            <h2 class="font-semibold">Clasificar movimientos</h2>
-            <p class="text-sm">Cola operativa distinta del mapeo patrimonial. {{ $assistant['total_unmapped'] }} ítems cat/sub sin cuenta contable opcional.</p>
-            <a href="{{ route('chart-accounts.classify') }}" class="ar-btn ar-btn-primary text-xs">Ir a Clasificar movimientos</a>
+            <h2 class="font-semibold">Pendientes de clasificación</h2>
+            <p class="text-sm">Cola operativa distinta de esta asignación. {{ $assistant['total_unmapped'] }} ítems cat/sub sin cuenta del plan (opcional).</p>
+            <a href="{{ route('chart-accounts.classify') }}" class="ar-btn ar-btn-primary text-xs">Ir a Pendientes</a>
             @if ($assistant['categories'])
                 <p class="text-xs font-semibold">Categorías</p>
                 <ul class="list-disc ps-5 text-sm">
@@ -96,9 +99,9 @@
         </div>
     </div>
 
-    @if (($imputationRules ?? collect())->isNotEmpty())
+    @if (($imputationRules ?? collect())->where('is_active', true)->isNotEmpty())
         <div class="ar-card mb-6 p-4">
-            <h2 class="mb-2 font-semibold">Reglas activas (resumen)</h2>
+            <h2 class="mb-2 font-semibold">Reglas automáticas activas (resumen)</h2>
             <ul class="list-disc ps-5 text-sm">
                 @foreach ($imputationRules->where('is_active', true)->take(12) as $rule)
                     <li>{{ $rule->conditionLabel() }} → {{ $rule->destinationLabel() }} (prio {{ $rule->priority }})</li>
@@ -108,7 +111,7 @@
     @endif
 
     <div class="mb-6 space-y-3">
-        <h2 class="font-semibold">Asignar categoría / subcategoría → cuenta contable</h2>
+        <h2 class="font-semibold">Asignar categoría / subcategoría → cuenta del plan</h2>
         @foreach ($categories as $category)
             <div class="ar-card space-y-2 p-4">
                 <form method="POST" action="{{ route('chart-accounts.mapping.save') }}" class="flex flex-wrap items-end gap-2">
@@ -147,29 +150,42 @@
 
     <div class="ar-card space-y-3 p-4">
         <h2 class="font-semibold">Materializar en movimientos existentes</h2>
-        <p class="ar-muted text-sm">No recalcula FX congelado. Solo actualiza <code>chart_account_id</code> según reglas actuales.</p>
-        <form method="POST" action="{{ route('chart-accounts.mapping.preview') }}">
+        <p class="ar-muted text-sm">No recalcula FX. Solo actualiza la cuenta del plan según las reglas actuales. Requiere vista previa.</p>
+        <form method="POST" action="{{ route('chart-accounts.mapping.preview') }}" class="space-y-2">
             @csrf
-            <button class="ar-btn ar-btn-secondary">Vista previa (auditoría)</button>
+            <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="overwrite_manual" value="1">
+                Incluir sobrescritura de clasificaciones ya confirmadas (no recomendado)
+            </label>
+            <button class="ar-btn ar-btn-secondary">Vista previa</button>
         </form>
 
         @if (! empty($preview))
             <div class="rounded border p-3 text-sm" style="border-color: var(--ar-border);">
-                <p>Candidatos: {{ $preview['total_candidates'] }} · Cambiarían: {{ $preview['would_change'] }} · Nuevos asignados: {{ $preview['would_assign'] }} · Sin cambio: {{ $preview['unchanged'] }}</p>
+                <p>
+                    Candidatos: {{ $preview['total_candidates'] }}
+                    · Coinciden (N): {{ $preview['matched'] ?? 0 }}
+                    · Manuales (X): {{ $preview['manual'] ?? 0 }}
+                    · Cambiarían (Y): {{ $preview['would_change'] }}
+                    · Intactos (Z): {{ $preview['intact'] ?? $preview['unchanged'] }}
+                </p>
                 @if (! empty($preview['sample']))
                     <ul class="mt-2 list-disc ps-5">
                         @foreach ($preview['sample'] as $row)
-                            <li>#{{ $row['id'] }} {{ $row['date'] }} · {{ $row['description'] ?: '—' }} · {{ $row['from'] ?? '∅' }} → {{ $row['to'] ?? '∅' }} ({{ $row['source'] }})</li>
+                            <li>#{{ $row['id'] }} {{ $row['date'] }} · {{ $row['description'] ?: '—' }} · {{ $row['from'] ?? '∅' }} → {{ $row['to'] ?? '∅' }} ({{ $row['source'] }}{{ isset($row['status']) ? ' · '.$row['status'] : '' }})</li>
                         @endforeach
                     </ul>
                 @endif
                 <form method="POST" action="{{ route('chart-accounts.mapping.apply') }}" class="mt-3 space-y-2">
                     @csrf
+                    @if (! empty($preview['overwrite_manual']))
+                        <input type="hidden" name="overwrite_manual" value="1">
+                    @endif
                     <label class="flex items-center gap-2 text-sm">
                         <input type="checkbox" name="confirm" value="1" required>
-                        Confirmo aplicar el mapeo a los movimientos existentes
+                        Confirmo aplicar la asignación a los movimientos (sin tocar manuales salvo que lo haya marcado arriba)
                     </label>
-                    <button class="ar-btn ar-btn-primary">Aplicar mapeo</button>
+                    <button class="ar-btn ar-btn-primary">Aplicar asignación</button>
                 </form>
             </div>
         @endif

@@ -6,13 +6,7 @@
                 <x-page-help topic="chart_accounts" />
             </div>
             <div class="flex flex-wrap gap-2">
-                @if (($progress['pending'] ?? 0) > 0)
-                    <a href="{{ route('chart-accounts.classify') }}" class="ar-btn ar-btn-secondary text-xs">
-                        Clasificar movimientos ({{ $progress['pending'] }})
-                    </a>
-                @else
-                    <a href="{{ route('chart-accounts.classify') }}" class="ar-btn ar-btn-secondary text-xs ar-muted">Clasificar movimientos · al día</a>
-                @endif
+                @include('finance.chart_accounts._plan_tools_nav', ['progress' => $progress])
                 <a href="{{ route('accounts.index') }}" class="ar-btn ar-btn-secondary text-xs">Cuentas financieras</a>
                 @can('categories.create')
                     <a href="{{ route('chart-accounts.create', ['parent_id' => $selected?->id]) }}" class="ar-btn ar-btn-primary">Nueva subcuenta</a>

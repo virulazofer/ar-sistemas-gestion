@@ -54,7 +54,7 @@ test('mapeo 500 root cause: Setting cache no guarda Eloquent (incomplete class)'
         ->and($cached)->toHaveKey('type')
         ->and($cached['type'])->toBe('json');
 
-    $this->get(route('chart-accounts.mapping'))->assertOk()->assertSee('Mapeo');
+    $this->get(route('chart-accounts.mapping'))->assertOk()->assertSee('Asignación al plan de cuentas');
 });
 
 test('regularizar CC: Operador 403, Administrador OK', function () {
@@ -132,7 +132,7 @@ test('categorias create no pide plan; mapeo asigna cuenta', function () {
 
     $html = $this->get(route('categories.index', ['legacy' => 1]))->assertOk()->getContent();
     expect($html)->not->toContain('name="chart_account_id"')
-        ->and($html)->toContain('Mapeo al plan');
+        ->and($html)->toContain('Asignación al plan');
 
     $this->post(route('categories.store'), [
         'name' => 'Super',

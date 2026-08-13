@@ -102,6 +102,17 @@
                 opacity: .9;
             }
             .ar-side-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .ar-side-nested { margin: .15rem 0 .35rem; }
+            .ar-side-nested-title {
+                margin: .35rem .65rem .15rem;
+                font-size: .68rem;
+                font-weight: 700;
+                letter-spacing: .04em;
+                text-transform: uppercase;
+                color: var(--ar-muted);
+            }
+            .ar-side-nested .ar-side-link { padding-left: 1.35rem; }
+            .ar-sidebar.is-collapsed .ar-side-nested-title { display: none; }
             .ar-sidebar.is-collapsed .ar-side-label,
             .ar-sidebar.is-collapsed .ar-side-chevron,
             .ar-sidebar.is-collapsed .ar-side-group-btn span:not(.ar-side-ico-wrap) { display: none; }

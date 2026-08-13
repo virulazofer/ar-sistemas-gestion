@@ -50,16 +50,17 @@ flowchart LR
 
 ## UX
 
-- Cola: **Clasificar movimientos**
-- Reglas con preview; guardar como regla opcional
-- Bulk cat/sub con preview + auditoría
-- Export pendientes ambiguos CSV/XLSX
-- Reportes: Nat/Cat/Sub/Ámbito + plan patrimonial
+- Cola: **Pendientes de clasificación** (solo sin `category_id`)
+- Asignación cat/sub → plan: **Asignación al plan de cuentas**
+- Reglas: **Reglas de clasificación automática** (0 activas OK)
+- Bulk con vista previa; no sobrescribe clasificación manual confirmada
+- Reportes: Nat/Cat/Sub/Ámbito + plan
+- Dry-run 11F8: solo artisan/interno (fuera de la navegación)
 
-## Dry-run
+## Dry-run (interno)
 
 ```bash
 php artisan classification:dry-run-11f8 --export --json=exports/11f8/dry-run.json
 ```
 
-No aplica reclasificación masiva hasta aprobación explícita.
+No aplica reclasificación masiva hasta aprobación explícita. No aparece en el menú de usuario.

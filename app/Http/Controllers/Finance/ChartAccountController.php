@@ -147,33 +147,46 @@ class ChartAccountController extends Controller
             $this->mapping->mapSubcategory($sub, $chartId);
         }
 
-        return back()->with('status', 'Mapeo de compatibilidad guardado.');
+        return back()->with('status', 'Asignación al plan de cuentas guardada.');
     }
 
     public function saveTypeDefaults(Request $request): RedirectResponse
     {
         return redirect()->route('imputation-rules.index')
-            ->with('status', 'Usá Reglas de imputación (los defaults por tipo quedaron deprecados en UX).');
+            ->with('status', 'Usá Reglas de clasificación automática (los defaults por tipo quedaron deprecados en UX).');
     }
 
     public function previewApply(Request $request): RedirectResponse
     {
-        $preview = $this->mapping->previewApplyToMovements();
+        $overwriteManual = $request->boolean('overwrite_manual');
+        $preview = $this->mapping->previewApplyToMovements(25, $overwriteManual);
 
         return redirect()
             ->route('chart-accounts.mapping')
             ->with('chart_mapping_preview', $preview)
-            ->with('status', 'Vista previa lista (compatibilidad). Revisá impacto antes de aplicar.');
+            ->with('status', sprintf(
+                'Vista previa: %d coinciden · %d manuales intactos · %d cambiarían · %d sin cambio.',
+                $preview['matched'],
+                $preview['manual'],
+                $preview['would_change'],
+                $preview['intact'],
+            ));
     }
 
     public function applyMapping(Request $request): RedirectResponse
     {
         $request->validate(['confirm' => ['accepted']]);
-        $result = $this->mapping->applyToMovements();
+        $overwriteManual = $request->boolean('overwrite_manual');
+        $result = $this->mapping->applyToMovements($overwriteManual);
 
         return redirect()
             ->route('chart-accounts.mapping')
-            ->with('status', "Mapeo aplicado: {$result['updated']} actualizados, {$result['skipped']} sin cambio.");
+            ->with('status', sprintf(
+                'Asignación aplicada: %d actualizados, %d sin cambio (%d manuales preservados).',
+                $result['updated'],
+                $result['skipped'],
+                $result['manual_skipped'],
+            ));
     }
 
     public function create(Request $request): View

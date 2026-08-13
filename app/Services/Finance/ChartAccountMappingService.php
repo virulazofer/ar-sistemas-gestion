@@ -15,9 +15,11 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Reglas dinámicas categoría/subcategoría → cuenta contable (plan).
- * Precedencia: subcategoría > categoría > regla de imputación > tipo de movimiento > sin asignar.
+ * Reglas dinámicas categoría/subcategoría → cuenta del plan.
+ * Precedencia al resolver: 1) manual explícito 2) subcategoría 3) categoría
+ * 4) regla automática / tipo genérico 5) pendiente (sin asignar).
  * Distinto de cuentas financieras (caja/banco).
+ * applyToMovements no sobrescribe asignaciones ya confirmadas salvo overwriteManual.
  */
 class ChartAccountMappingService
 {
@@ -248,18 +250,23 @@ class ChartAccountMappingService
     }
 
     /**
-     * Vista previa de materialización de reglas sobre movimientos existentes.
+     * Vista previa de materialización cat/sub → plan sobre movimientos existentes.
      * No escribe; no recalcula FX.
+     * Por defecto NO sobrescribe chart ya asignado (clasificación confirmada).
      *
      * @return array{
      *   total_candidates: int,
+     *   matched: int,
+     *   manual: int,
      *   would_change: int,
      *   would_assign: int,
      *   unchanged: int,
-     *   sample: list<array{id: int, date: string, description: ?string, from: ?int, to: ?int, source: string}>
+     *   intact: int,
+     *   overwrite_manual: bool,
+     *   sample: list<array{id: int, date: string, description: ?string, from: ?int, to: ?int, source: string, status: string}>
      * }
      */
-    public function previewApplyToMovements(?int $limitSample = 25): array
+    public function previewApplyToMovements(?int $limitSample = 25, bool $overwriteManual = false): array
     {
         $movements = Movement::query()
             ->posted()
@@ -267,6 +274,8 @@ class ChartAccountMappingService
             ->orderBy('id')
             ->get(['id', 'movement_date', 'description', 'category_id', 'subcategory_id', 'chart_account_id', 'type']);
 
+        $matched = 0;
+        $manual = 0;
         $wouldChange = 0;
         $wouldAssign = 0;
         $unchanged = 0;
@@ -278,8 +287,35 @@ class ChartAccountMappingService
             $to = $resolved['chart_account_id'];
             $from = $m->chart_account_id ? (int) $m->chart_account_id : null;
 
+            if ($to === null && $from === null) {
+                $unchanged++;
+
+                continue;
+            }
+
             if ($to === $from) {
                 $unchanged++;
+
+                continue;
+            }
+
+            // Diferencia entre actual y resuelto = candidato a cambio.
+            $matched++;
+            $hasManualChart = $from !== null;
+
+            if ($hasManualChart && ! $overwriteManual) {
+                $manual++;
+                if (count($sample) < ($limitSample ?? 25)) {
+                    $sample[] = [
+                        'id' => $m->id,
+                        'date' => $m->movement_date?->toDateString() ?? '',
+                        'description' => $m->description,
+                        'from' => $from,
+                        'to' => $to,
+                        'source' => $resolved['source'],
+                        'status' => 'manual_intact',
+                    ];
+                }
 
                 continue;
             }
@@ -297,31 +333,38 @@ class ChartAccountMappingService
                     'from' => $from,
                     'to' => $to,
                     'source' => $resolved['source'],
+                    'status' => 'would_change',
                 ];
             }
         }
 
         return [
             'total_candidates' => $movements->count(),
+            'matched' => $matched,
+            'manual' => $manual,
             'would_change' => $wouldChange,
             'would_assign' => $wouldAssign,
             'unchanged' => $unchanged,
+            'intact' => $unchanged + $manual,
+            'overwrite_manual' => $overwriteManual,
             'sample' => $sample,
         ];
     }
 
     /**
      * Aplica reglas a movimientos existentes (solo tras preview explícito).
+     * Por defecto no sobrescribe chart_account_id ya confirmado.
      * No toca FX congelado ni amarillos 11E-R.
      *
-     * @return array{updated: int, skipped: int}
+     * @return array{updated: int, skipped: int, manual_skipped: int}
      */
-    public function applyToMovements(): array
+    public function applyToMovements(bool $overwriteManual = false): array
     {
-        return DB::transaction(function () {
-            $preview = $this->previewApplyToMovements(5);
+        return DB::transaction(function () use ($overwriteManual) {
+            $preview = $this->previewApplyToMovements(5, $overwriteManual);
             $updated = 0;
             $skipped = 0;
+            $manualSkipped = 0;
 
             $movements = Movement::query()
                 ->posted()
@@ -342,6 +385,13 @@ class ChartAccountMappingService
                     continue;
                 }
 
+                if ($from !== null && ! $overwriteManual) {
+                    $manualSkipped++;
+                    $skipped++;
+
+                    continue;
+                }
+
                 $m->update(['chart_account_id' => $to]);
                 $updated++;
             }
@@ -349,9 +399,15 @@ class ChartAccountMappingService
             $this->audit->log('chart_mapping_applied_to_movements', null, $preview, [
                 'updated' => $updated,
                 'skipped' => $skipped,
-            ], 'Mapeo plan de cuentas materializado en movimientos');
+                'manual_skipped' => $manualSkipped,
+                'overwrite_manual' => $overwriteManual,
+            ], 'Asignación al plan materializada en movimientos');
 
-            return ['updated' => $updated, 'skipped' => $skipped];
+            return [
+                'updated' => $updated,
+                'skipped' => $skipped,
+                'manual_skipped' => $manualSkipped,
+            ];
         });
     }
 

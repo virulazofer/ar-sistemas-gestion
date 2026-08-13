@@ -5,7 +5,7 @@
                 <h1 class="text-xl font-semibold">Categorías y subcategorías</h1>
                 <x-page-help topic="categories" />
             </div>
-            <a href="{{ route('chart-accounts.mapping') }}" class="ar-btn ar-btn-secondary text-xs">Mapeo plan de cuentas</a>
+            <a href="{{ route('chart-accounts.mapping') }}" class="ar-btn ar-btn-secondary text-xs">Asignación al plan de cuentas</a>
         </div>
     </x-slot>
 
@@ -32,7 +32,7 @@
                     <option value="professional">Profesional</option>
                     <option value="both">Ambos</option>
                 </select>
-                <p class="ar-muted text-xs">La cuenta contable se asigna en <a href="{{ route('chart-accounts.mapping') }}" class="underline">Mapeo al plan</a> (no acá).</p>
+                <p class="ar-muted text-xs">La cuenta del plan se asigna en <a href="{{ route('chart-accounts.mapping') }}" class="underline">Asignación al plan</a> (no acá).</p>
                 <button class="ar-btn ar-btn-primary">Crear categoría</button>
             </form>
 
@@ -45,7 +45,7 @@
                     @endforeach
                 </select>
                 <input name="name" class="ar-input" placeholder="Nombre" required>
-                <p class="ar-muted text-xs">Mapeo contable: solo en la herramienta de mapeo.</p>
+                <p class="ar-muted text-xs">Asignación al plan: solo en la herramienta de asignación.</p>
                 <button class="ar-btn ar-btn-primary">Crear subcategoría</button>
             </form>
         @endcan

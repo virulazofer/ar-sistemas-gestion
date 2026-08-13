@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Finance;
 
 use App\Enums\AccountType;
 use App\Http\Controllers\Controller;
+use App\Models\ChartAccount;
 use App\Models\Currency;
 use App\Models\FinancialAccount;
 use App\Rules\CbuCvu;
@@ -47,6 +48,7 @@ class FinancialAccountController extends Controller
         return view('finance.accounts.create', [
             'currencies' => Currency::query()->active()->orderBy('code')->get(),
             'types' => AccountType::cases(),
+            'chartAccounts' => ChartAccount::query()->orderBy('code')->get(),
         ]);
     }
 
@@ -61,12 +63,19 @@ class FinancialAccountController extends Controller
 
         $data = $this->validated($request);
 
+        $chartAccountId = $data['chart_account_id'] ?? null;
+        unset($data['chart_account_id']);
+
         $account = FinancialAccount::query()->create([
             ...$data,
             'cached_balance' => 0,
             'is_liability' => AccountType::from($data['type'])->isLiability(),
+            'chart_account_id' => $chartAccountId,
         ]);
-        $this->chartLinker->link($account, force: true);
+        // Auto-vínculo por tipo (banco/billetera/efectivo/tarjeta). No depende de Asignación.
+        if (! $account->chart_account_id) {
+            $this->chartLinker->link($account, force: true);
+        }
 
         $this->audit->log('account_created', $account, null, $account->only([
             'name', 'type', 'currency_id', 'status', 'cbu_cvu', 'cuit', 'card_last4', 'card_brand',
@@ -81,6 +90,7 @@ class FinancialAccountController extends Controller
             'account' => $financial_account,
             'currencies' => Currency::query()->active()->orderBy('code')->get(),
             'types' => AccountType::cases(),
+            'chartAccounts' => ChartAccount::query()->orderBy('code')->get(),
         ]);
     }
 
@@ -96,15 +106,25 @@ class FinancialAccountController extends Controller
         $data = $this->validated($request, updating: true);
 
         $old = $financial_account->only([
-            'name', 'type', 'status', 'description', 'cbu_cvu', 'cuit', 'card_last4', 'card_brand', 'card_holder',
+            'name', 'type', 'status', 'description', 'cbu_cvu', 'cuit', 'card_last4', 'card_brand', 'card_holder', 'chart_account_id',
         ]);
+        $previousType = $financial_account->type instanceof AccountType
+            ? $financial_account->type->value
+            : (string) $financial_account->type;
         $type = $data['type'] instanceof AccountType ? $data['type'] : AccountType::from($data['type']);
         $data['is_liability'] = $type->isLiability();
+        $typeChanged = $previousType !== $type->value;
+        $explicitChart = $request->filled('chart_account_id');
 
         $financial_account->update($data);
-        $this->chartLinker->link($financial_account->fresh(), force: true);
-        $this->audit->log('account_updated', $financial_account, $old, $financial_account->only([
-            'name', 'type', 'status', 'description', 'cbu_cvu', 'cuit', 'card_last4', 'card_brand', 'card_holder',
+        $fresh = $financial_account->fresh();
+        if ($typeChanged && ! $explicitChart) {
+            $this->chartLinker->link($fresh, force: true);
+        } elseif (! $fresh->chart_account_id) {
+            $this->chartLinker->link($fresh, force: false);
+        }
+        $this->audit->log('account_updated', $financial_account, $old, $financial_account->fresh()->only([
+            'name', 'type', 'status', 'description', 'cbu_cvu', 'cuit', 'card_last4', 'card_brand', 'card_holder', 'chart_account_id',
         ]), 'Cuenta actualizada');
 
         return redirect()->route('accounts.index')->with('status', 'Cuenta actualizada.');
@@ -122,6 +142,7 @@ class FinancialAccountController extends Controller
             'description' => ['nullable', 'string', 'max:1000'],
             'external_identifier' => ['nullable', 'string', 'max:120'],
             'status' => ['required', Rule::in(['active', 'inactive'])],
+            'chart_account_id' => ['nullable', 'integer', 'exists:chart_accounts,id'],
             'cbu_cvu' => ['nullable', 'string', 'max:32', new CbuCvu],
             'cuit' => ['nullable', 'string', 'max:20', new Cuit],
             'card_number' => [$isCard ? 'nullable' : 'prohibited', 'string', 'max:32', new Luhn],

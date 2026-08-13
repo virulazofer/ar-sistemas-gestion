@@ -252,7 +252,7 @@ test('mapeo plan precedencia preview apply y alerta sin cuenta', function () {
     $preview = $mapping->previewApplyToMovements();
     expect($preview['would_change'])->toBeGreaterThan(0);
 
-    $this->get(route('chart-accounts.mapping'))->assertOk()->assertSee('Mapeo');
+    $this->get(route('chart-accounts.mapping'))->assertOk()->assertSee('Asignación al plan de cuentas');
     $this->get(route('chart-accounts.index'))->assertOk();
 
     $result = $mapping->applyToMovements();

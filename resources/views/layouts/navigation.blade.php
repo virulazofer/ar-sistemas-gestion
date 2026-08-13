@@ -49,7 +49,6 @@
                 <div class="ar-side-sub" x-show="groups.mae && (drawer || !collapsed)" x-cloak>
                     @can('clients.view')<a href="{{ route('clients.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('clients.index') || request()->routeIs('clients.create') || request()->routeIs('clients.show') || request()->routeIs('clients.edit') || request()->routeIs('clients.current-accounts') ? 'is-active' : '' }}"><span class="ar-side-label">Clientes</span></a>@endcan
                     @can('suppliers.view')<a href="{{ route('suppliers.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('suppliers.*') ? 'is-active' : '' }}"><span class="ar-side-label">Proveedores</span></a>@endcan
-                    @can('categories.view')<a href="{{ route('chart-accounts.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('chart-accounts.index') || request()->routeIs('chart-accounts.create') || request()->routeIs('chart-accounts.edit') || request()->routeIs('categories.*') || request()->routeIs('subcategories.*') ? 'is-active' : '' }}"><span class="ar-side-label">Plan de cuentas</span></a>@endcan
                     @php
                         $pendingClassify = 0;
                         try {
@@ -59,9 +58,27 @@
                         } catch (\Throwable) { $pendingClassify = 0; }
                     @endphp
                     @can('categories.view')
-                        <a href="{{ route('chart-accounts.classify') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('chart-accounts.classify') || request()->routeIs('chart-accounts.unclassified') || request()->routeIs('chart-accounts.mapping') ? 'is-active' : '' }}">
-                            <span class="ar-side-label">Clasificar movimientos @if($pendingClassify > 0)<span class="ar-muted">({{ $pendingClassify }})</span>@endif</span>
-                        </a>
+                        <div class="ar-side-nested">
+                            <p class="ar-side-nested-title"><span class="ar-side-label">Plan de cuentas</span></p>
+                            <a href="{{ route('chart-accounts.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('chart-accounts.index') || request()->routeIs('chart-accounts.create') || request()->routeIs('chart-accounts.edit') || request()->routeIs('categories.*') || request()->routeIs('subcategories.*') ? 'is-active' : '' }}">
+                                <span class="ar-side-label">Ver plan</span>
+                            </a>
+                            <a href="{{ route('chart-accounts.classify') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('chart-accounts.classify') || request()->routeIs('chart-accounts.unclassified') ? 'is-active' : '' }}">
+                                <span class="ar-side-label">
+                                    @if ($pendingClassify > 0)
+                                        Pendientes de clasificación <span class="ar-muted">({{ $pendingClassify }})</span>
+                                    @else
+                                        Pendientes de clasificación
+                                    @endif
+                                </span>
+                            </a>
+                            <a href="{{ route('chart-accounts.mapping') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('chart-accounts.mapping') ? 'is-active' : '' }}">
+                                <span class="ar-side-label">Asignación al plan</span>
+                            </a>
+                            <a href="{{ route('imputation-rules.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('imputation-rules.*') ? 'is-active' : '' }}">
+                                <span class="ar-side-label">Reglas automáticas</span>
+                            </a>
+                        </div>
                     @endcan
                 </div>
             </div>

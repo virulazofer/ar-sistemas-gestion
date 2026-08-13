@@ -48,7 +48,7 @@ class ImputationRuleController extends Controller
         $data = $this->validated($request);
         $this->rules->create($data);
 
-        return back()->with('status', 'Regla de imputación creada.');
+        return back()->with('status', 'Regla de clasificación automática creada.');
     }
 
     public function update(Request $request, ImputationRule $imputation_rule): RedirectResponse
@@ -68,23 +68,36 @@ class ImputationRuleController extends Controller
 
     public function preview(Request $request, ImputationRule $imputation_rule): RedirectResponse
     {
-        $preview = $this->rules->previewApply($imputation_rule);
+        $overwriteManual = $request->boolean('overwrite_manual');
+        $preview = $this->rules->previewApply($imputation_rule, null, true, $overwriteManual);
         $preview['rule_id'] = $imputation_rule->id;
 
         return redirect()
             ->route('imputation-rules.index')
             ->with('imputation_rule_preview', $preview)
-            ->with('status', "Esta regla afectará {$preview['would_affect']} movimiento(s).");
+            ->with('status', sprintf(
+                'Vista previa: %d coinciden · %d manuales · %d cambiarían · %d intactos.',
+                $preview['matched'],
+                $preview['manual'],
+                $preview['would_change'],
+                $preview['intact'],
+            ));
     }
 
     public function apply(Request $request, ImputationRule $imputation_rule): RedirectResponse
     {
         $request->validate(['confirm' => ['accepted']]);
-        $result = $this->rules->apply($imputation_rule);
+        $overwriteManual = $request->boolean('overwrite_manual');
+        $result = $this->rules->apply($imputation_rule, null, true, $overwriteManual);
 
         return redirect()
             ->route('imputation-rules.index')
-            ->with('status', "Regla aplicada: {$result['updated']} movimiento(s).");
+            ->with('status', sprintf(
+                'Regla aplicada: %d actualizados · %d manuales preservados · %d intactos.',
+                $result['updated'],
+                $result['manual_skipped'],
+                $result['intact'],
+            ));
     }
 
     /**
