@@ -11,7 +11,7 @@ class ChartStructuralDryRunCommand extends Command
         {--json= : Ruta de salida JSON}
         {--infra : Aplicar solo infraestructura (seed árbol + link FA + remap masters; SIN movimientos)}';
 
-    protected $description = '11F dry-run migración estructural del plan de cuentas (sin apply masivo)';
+    protected $description = '11F dry-run migración estructural del plan de cuentas (sin apply masivo; usar chart:apply-11f con confirmación)';
 
     public function handle(ChartStructuralMigrationService $service): int
     {

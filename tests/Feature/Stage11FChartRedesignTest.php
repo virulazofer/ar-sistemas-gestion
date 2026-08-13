@@ -282,3 +282,80 @@ test('no duplicacion conceptual categoria plan', function () {
     $cat = Category::query()->find($bridge['category_id']);
     expect($cat?->name)->toBe('Automotor');
 });
+
+test('2B mueve raices legacy bajo bienes de uso', function () {
+    seedChartTree();
+    $asset = \App\Enums\ChartAccountType::Asset->value;
+    $legacy = [
+        ChartAccount::query()->create([
+            'code' => '99.1', 'name' => 'Instrumentos musicales', 'type' => $asset,
+            'parent_id' => null, 'is_active' => true, 'is_protected' => false, 'sort_order' => 1,
+        ]),
+        ChartAccount::query()->create([
+            'code' => '99.2', 'name' => 'Propiedades', 'type' => $asset,
+            'parent_id' => null, 'is_active' => true, 'is_protected' => false, 'sort_order' => 2,
+        ]),
+        ChartAccount::query()->create([
+            'code' => '99.3', 'name' => 'Vehículos', 'type' => $asset,
+            'parent_id' => null, 'is_active' => true, 'is_protected' => false, 'sort_order' => 3,
+        ]),
+    ];
+    $ids = collect($legacy)->pluck('id')->all();
+
+    $report = app(ChartStructuralMigrationService::class)->correctLegacyAssetRoots();
+    expect($report['status'])->toBe('ok');
+
+    $roots = ChartAccount::query()->roots()->pluck('code')->sort()->values()->all();
+    expect($roots)->toBe(['1', '2', '3', '4', '5']);
+
+    foreach (['1.5.3' => 'Instrumentos musicales', '1.5.4' => 'Propiedades', '1.5.5' => 'Vehículos'] as $code => $name) {
+        $acc = ChartAccount::query()->where('code', $code)->first();
+        expect($acc)->not->toBeNull()
+            ->and($acc->name)->toBe($name)
+            ->and($acc->parent?->code)->toBe('1.5')
+            ->and(in_array($acc->id, $ids, true))->toBeTrue();
+    }
+    expect(ChartAccount::query()->where('code', '1.5.6')->where('name', 'Otros bienes de uso')->exists())->toBeTrue();
+});
+
+test('apply fase 1 convergencia chart sin tocar importes', function () {
+    seedChartTree();
+    test()->seed(CurrencySeeder::class);
+    test()->seed(ExchangeRateSeeder::class);
+    $this->actingAs(makeAdmin());
+
+    $ars = Currency::query()->where('code', 'ARS')->firstOrFail();
+    $fa = FinancialAccount::query()->create([
+        'name' => 'Caja apply',
+        'type' => AccountType::Cash,
+        'currency_id' => $ars->id,
+        'status' => 'active',
+        'cached_balance' => 0,
+    ]);
+    $superChart = ChartAccount::query()->where('code', '5.1.1')->firstOrFail();
+    $cat = Category::query()->create([
+        'name' => 'Supermercado',
+        'scope' => 'personal',
+        'chart_account_id' => $superChart->id,
+        'is_active' => true,
+        'sort_order' => 1,
+    ]);
+    $mov = app(MovementService::class)->createSimple([
+        'type' => 'expense',
+        'scope' => 'personal',
+        'financial_account_id' => $fa->id,
+        'category_id' => $cat->id,
+        'amount' => '250.50',
+        'movement_date' => now()->toDateString(),
+        'description' => 'compra super',
+    ]);
+    $mov->update(['chart_account_id' => null]);
+    $amountBefore = (string) $mov->fresh()->amount_ars;
+
+    $report = app(ChartStructuralMigrationService::class)->applyPhase1();
+    expect($report['integrity_ok'])->toBeTrue()
+        ->and($report['convergence']['updated'])->toBeGreaterThanOrEqual(1)
+        ->and((int) $mov->fresh()->chart_account_id)->toBe($superChart->id)
+        ->and((string) $mov->fresh()->amount_ars)->toBe($amountBefore)
+        ->and($fa->fresh()->chartAccount?->code)->toBe('1.1.1');
+});

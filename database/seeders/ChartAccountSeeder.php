@@ -108,7 +108,10 @@ class ChartAccountSeeder extends Seeder
                         'children' => [
                             ['code' => '1.5.1', 'name' => 'Equipamiento', 'type' => $asset],
                             ['code' => '1.5.2', 'name' => 'Muebles y útiles', 'type' => $asset],
-                            ['code' => '1.5.3', 'name' => 'Otros bienes de uso', 'type' => $asset],
+                            ['code' => '1.5.3', 'name' => 'Instrumentos musicales', 'type' => $asset],
+                            ['code' => '1.5.4', 'name' => 'Propiedades', 'type' => $asset],
+                            ['code' => '1.5.5', 'name' => 'Vehículos', 'type' => $asset],
+                            ['code' => '1.5.6', 'name' => 'Otros bienes de uso', 'type' => $asset],
                         ],
                     ],
                 ],

@@ -58,15 +58,23 @@ Automático por tipo (sin mapeo por movimiento):
 
 Tablas `categories` / `subcategories` se mantienen en migración progresiva (dual-read/dual-write). La UX cotidiana usa el plan (Concepto). Menú simplificado: **Plan de cuentas · Cuentas financieras · Clasificar movimientos (N)**.
 
-## Dry-run
+## Dry-run / Apply Fase 1
 
 ```bash
 php artisan chart:dry-run-11f --json=exports/11f/dry-run.json
 # Solo infraestructura (árbol + link FA + remap masters; SIN movimientos):
 php artisan chart:dry-run-11f --infra
+# Apply autorizado Fase 1 (2B raíces legacy + FA + Bazar/MUBI + convergencia chart):
+php artisan chart:apply-11f --confirm=APPLY-11F-PHASE1 --json=exports/11f/apply-phase1.json
 ```
 
-**DETENERSE antes del apply masivo de movimientos.**
+**Apply masivo solo con aprobación explícita.** Tras Fase 1: **DETENERSE** (no Fase 2 / Etapa 12).
+
+### Addendum 2B — Bienes de uso
+
+Raíces legacy (`Instrumentos musicales`, `Propiedades`, `Vehículos`) se reubican bajo `1.5 Bienes de uso` (sin duplicar; se preservan IDs/movimientos):
+
+`1.5.1 Equipamiento` · `1.5.2 Muebles y útiles` · `1.5.3 Instrumentos musicales` · `1.5.4 Propiedades` · `1.5.5 Vehículos` · `1.5.6 Otros bienes de uso`
 
 ## Ayuda breve
 
