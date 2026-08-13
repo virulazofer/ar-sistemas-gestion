@@ -117,7 +117,7 @@ test('plan de cuentas CRUD y mapa', function () {
 
     expect(ChartAccount::query()->where('code', '1.1')->exists())->toBeTrue();
     $this->get(route('chart-accounts.index'))->assertOk()->assertSee('1.1');
-    $this->get(route('chart-accounts.map'))->assertOk()->assertSee('Activo');
+    $this->get(route('chart-accounts.map'))->assertRedirect(route('chart-accounts.index'));
 });
 
 test('categoria detalle muestra totales de periodo', function () {

@@ -5,12 +5,15 @@ namespace App\Http\Controllers\Finance;
 use App\Enums\CommercialChargeType;
 use App\Enums\DocumentalStatus;
 use App\Http\Controllers\Controller;
-use App\Models\Category;
+use App\Enums\ChartAccountType;
+use App\Enums\MovementScope;
+use App\Models\ChartAccount;
 use App\Models\Client;
 use App\Models\FinancialAccount;
 use App\Services\Commercial\ReceiptService;
 use App\Services\Finance\ExchangeRateService;
 use App\Services\Finance\MovementService;
+use App\Services\Finance\ScopeOriginRules;
 use App\Support\Money;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -31,14 +34,17 @@ class QuickMovementController extends Controller
         private readonly MovementService $movements,
         private readonly ExchangeRateService $rates,
         private readonly ReceiptService $receipts,
+        private readonly ScopeOriginRules $scopeRules,
     ) {}
 
     public function create(Request $request): View
     {
         $accounts = FinancialAccount::query()->with('currency')->active()->orderBy('name')->get();
-        $categories = Category::query()->with(['subcategories' => fn ($q) => $q->where('is_active', true)->orderBy('sort_order')])
+        $conceptAccounts = ChartAccount::query()
             ->active()
-            ->orderBy('sort_order')
+            ->whereIn('type', [ChartAccountType::Income->value, ChartAccountType::Expense->value])
+            ->whereNotNull('parent_id')
+            ->orderBy('code')
             ->get();
         $clients = Client::query()->active()->orderBy('code')->orderBy('name')->get();
 
@@ -66,7 +72,7 @@ class QuickMovementController extends Controller
 
         return view('finance.quick', [
             'accounts' => $accounts,
-            'categories' => $categories,
+            'conceptAccounts' => $conceptAccounts,
             'clients' => $clients,
             'rateInfo' => $rateInfo,
             'decision' => session('quick_income_decision'),
@@ -85,7 +91,7 @@ class QuickMovementController extends Controller
 
         if ($type === 'transfer') {
             $data = $request->validate([
-                'scope' => ['required', Rule::in(['personal', 'professional'])],
+                'scope' => ['required', Rule::in(array_merge(MovementScope::valuesForExpense(), ['personal', 'professional']))],
                 'from_account_id' => ['required', 'exists:financial_accounts,id'],
                 'to_account_id' => ['required', 'exists:financial_accounts,id', 'different:from_account_id'],
                 'amount' => ['required', 'numeric', 'gt:0'],
@@ -120,10 +126,15 @@ class QuickMovementController extends Controller
             );
         }
 
+        $scopeAllowed = $type === 'income'
+            ? MovementScope::valuesForIncome()
+            : MovementScope::valuesForExpense();
+
         $data = $request->validate([
             'type' => ['required', Rule::in(['income', 'expense'])],
-            'scope' => ['required', Rule::in(['personal', 'professional'])],
+            'scope' => ['required', Rule::in($scopeAllowed)],
             'financial_account_id' => ['required', 'exists:financial_accounts,id'],
+            'chart_account_id' => ['nullable', 'exists:chart_accounts,id'],
             'category_id' => ['nullable', 'exists:categories,id'],
             'subcategory_id' => ['nullable', 'exists:subcategories,id'],
             'amount' => ['required', 'numeric', 'gt:0'],
@@ -143,6 +154,12 @@ class QuickMovementController extends Controller
             'missing_charge.scope' => ['nullable', Rule::in(['professional', 'personal'])],
             'missing_charge.documental_status' => ['nullable', Rule::enum(DocumentalStatus::class)],
         ]);
+
+        try {
+            $this->scopeRules->assertAllowed($data['type'], $data['scope']);
+        } catch (\Throwable $e) {
+            return back()->withInput()->withErrors(['scope' => $e->getMessage()]);
+        }
 
         $account = FinancialAccount::query()->with('currency')->findOrFail($data['financial_account_id']);
         $applyToCc = $request->boolean('apply_to_cc') && ($data['type'] === 'income') && ! empty($data['client_id']);
@@ -224,6 +241,7 @@ class QuickMovementController extends Controller
                 'type' => $data['type'],
                 'scope' => $data['scope'],
                 'financial_account_id' => (int) $data['financial_account_id'],
+                'chart_account_id' => isset($data['chart_account_id']) ? (int) $data['chart_account_id'] : null,
                 'category_id' => $data['category_id'] ?? null,
                 'subcategory_id' => $data['subcategory_id'] ?? null,
                 'amount' => $data['amount'],

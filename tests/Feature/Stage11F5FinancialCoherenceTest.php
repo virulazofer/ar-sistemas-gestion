@@ -54,8 +54,7 @@ test('carga rapida orden campos e ingreso con CC un solo credito', function () {
     expect($html)->toContain('Fecha')
         ->and($html)->toContain('Ámbito')
         ->and($html)->toContain('Descripción')
-        ->and($html)->toContain('Categoría')
-        ->and($html)->toContain('Subcategoría')
+        ->and($html)->toContain('Concepto')
         ->and($html)->toContain('Importe')
         ->and($html)->toContain('Aplicar a cuenta corriente');
 
@@ -188,7 +187,7 @@ test('categorias expandibles y detalle subcategoria', function () {
         'description' => 'gasto sub',
     ]);
 
-    $this->get(route('categories.index'))
+    $this->get(route('categories.index', ['legacy' => 1]))
         ->assertOk()
         ->assertSee('Analítica Cat')
         ->assertSee('Sub Analítica');

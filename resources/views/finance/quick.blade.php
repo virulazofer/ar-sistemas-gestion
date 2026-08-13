@@ -3,24 +3,26 @@
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
                 <h1 class="text-xl font-semibold">Carga rápida</h1>
-                <p class="ar-muted text-sm">Registrá un ingreso, gasto o transferencia en segundos.</p>
+                <p class="ar-muted text-sm">Ingreso / egreso / transferencia. Concepto = hoja del plan de cuentas.</p>
             </div>
             <x-page-help topic="movements.quick" />
         </div>
     </x-slot>
 
     @php
-        $categoriesPayload = $categories->map(fn ($c) => [
-            'id' => $c->id,
-            'name' => $c->name,
-            'scope' => $c->scope,
-            'subcategories' => $c->subcategories->map(fn ($s) => ['id' => $s->id, 'name' => $s->name])->values(),
-        ])->values();
         $accountsPayload = $accounts->map(fn ($a) => [
             'id' => $a->id,
             'name' => $a->name,
             'currency' => $a->currency->code,
             'is_liability' => (bool) ($a->is_liability || $a->type?->value === 'credit_card'),
+        ])->values();
+        $conceptsPayload = ($conceptAccounts ?? collect())->map(fn ($c) => [
+            'id' => $c->id,
+            'code' => $c->code,
+            'name' => $c->name,
+            'type' => $c->type instanceof \BackedEnum ? $c->type->value : (string) $c->type,
+            'path' => $c->pathLabel(),
+            'suggested_scope' => $c->suggested_scope,
         ])->values();
     @endphp
 
@@ -29,18 +31,38 @@
         x-data="{
             type: '{{ old('type', session('quick_income_decision') ? 'income' : 'expense') }}',
             scope: '{{ old('scope', 'personal') }}',
-            categoryId: '{{ old('category_id') }}',
-            subcategoryId: '{{ old('subcategory_id') }}',
+            chartAccountId: '{{ old('chart_account_id') }}',
+            conceptQuery: '',
             accountId: '{{ old('financial_account_id') }}',
             applyToCc: {{ old('apply_to_cc', $decision['apply_to_cc'] ?? false) ? 'true' : 'false' }},
-            categories: {{ Js::from($categoriesPayload) }},
             accounts: {{ Js::from($accountsPayload) }},
-            get filteredCategories() {
-                return this.categories.filter(c => c.scope === this.scope || c.scope === 'both')
+            concepts: {{ Js::from($conceptsPayload) }},
+            get scopeOptions() {
+                if (this.type === 'income') {
+                    return [
+                        { value: 'professional', label: 'Profesional' },
+                        { value: 'financial', label: 'Financiero' },
+                    ]
+                }
+                return [
+                    { value: 'personal', label: 'Personal' },
+                    { value: 'professional', label: 'Profesional' },
+                    { value: 'mixed', label: 'Mixto' },
+                ]
             },
-            get filteredSubs() {
-                const cat = this.categories.find(c => String(c.id) === String(this.categoryId))
-                return cat ? cat.subcategories : []
+            get scopeLabel() {
+                return this.type === 'income' ? 'Origen' : 'Ámbito'
+            },
+            get filteredConcepts() {
+                const t = this.type === 'income' ? 'income' : 'expense'
+                const q = (this.conceptQuery || '').toLowerCase().trim()
+                return this.concepts
+                    .filter(c => c.type === t)
+                    .filter(c => !q || c.path.toLowerCase().includes(q) || c.name.toLowerCase().includes(q) || c.code.includes(q))
+                    .slice(0, 40)
+            },
+            get selectedConcept() {
+                return this.concepts.find(c => String(c.id) === String(this.chartAccountId))
             },
             get selectedAccount() {
                 return this.accounts.find(a => String(a.id) === String(this.accountId))
@@ -55,8 +77,26 @@
                     return a.is_liability ? 'Cuenta debitada (pasivo tarjeta)' : 'Cuenta debitada'
                 }
                 return 'Cuenta financiera'
+            },
+            onTypeChange() {
+                const allowed = this.scopeOptions.map(o => o.value)
+                if (!allowed.includes(this.scope)) {
+                    this.scope = allowed[0]
+                }
+                this.chartAccountId = ''
+                this.conceptQuery = ''
+            },
+            onConceptChange() {
+                const c = this.selectedConcept
+                if (c && c.suggested_scope) {
+                    const allowed = this.scopeOptions.map(o => o.value)
+                    if (allowed.includes(c.suggested_scope)) {
+                        this.scope = c.suggested_scope
+                    }
+                }
             }
         }"
+        x-init="onTypeChange()"
     >
         @if (session('status'))
             <p class="mb-4 rounded border px-3 py-2 text-sm" style="border-color: var(--ar-border); background: var(--ar-surface-2, transparent);">
@@ -89,15 +129,15 @@
 
             <div class="grid grid-cols-3 gap-2">
                 <label class="ar-btn text-center" :class="type === 'expense' ? 'ar-btn-primary' : 'ar-btn-secondary'">
-                    <input type="radio" name="type" value="expense" class="sr-only" x-model="type">
-                    Gasto
+                    <input type="radio" name="type" value="expense" class="sr-only" x-model="type" @change="onTypeChange()">
+                    Egreso
                 </label>
                 <label class="ar-btn text-center" :class="type === 'income' ? 'ar-btn-primary' : 'ar-btn-secondary'">
-                    <input type="radio" name="type" value="income" class="sr-only" x-model="type">
+                    <input type="radio" name="type" value="income" class="sr-only" x-model="type" @change="onTypeChange()">
                     Ingreso
                 </label>
                 <label class="ar-btn text-center" :class="type === 'transfer' ? 'ar-btn-primary' : 'ar-btn-secondary'">
-                    <input type="radio" name="type" value="transfer" class="sr-only" x-model="type">
+                    <input type="radio" name="type" value="transfer" class="sr-only" x-model="type" @change="onTypeChange()">
                     Transferencia
                 </label>
             </div>
@@ -108,39 +148,36 @@
                     <input id="movement_date" type="date" name="movement_date" class="ar-input" value="{{ old('movement_date', now()->toDateString()) }}" required>
                 </div>
                 <div>
-                    <label class="ar-label" for="scope">Ámbito</label>
+                    <label class="ar-label" for="scope" x-text="type === 'transfer' ? 'Ámbito' : scopeLabel">Ámbito</label>
                     <select id="scope" name="scope" class="ar-input" x-model="scope" required>
-                        <option value="personal">Personal</option>
-                        <option value="professional">Profesional</option>
+                        <template x-for="opt in (type === 'transfer'
+                            ? [{value:'personal',label:'Personal'},{value:'professional',label:'Profesional'},{value:'mixed',label:'Mixto'}]
+                            : scopeOptions)" :key="opt.value">
+                            <option :value="opt.value" x-text="opt.label"></option>
+                        </template>
                     </select>
+                    <p class="ar-muted mt-1 text-xs" x-show="type !== 'transfer' && selectedConcept?.suggested_scope">
+                        Sugerido por concepto (editable).
+                    </p>
                 </div>
             </div>
 
             <div>
                 <label class="ar-label" for="description">Descripción</label>
-                <input id="description" type="text" name="description" class="ar-input" value="{{ old('description') }}" placeholder="Opcional">
+                <input id="description" type="text" name="description" class="ar-input" value="{{ old('description') }}" placeholder="Ej. Nafta Shell / Abono DAASA">
             </div>
 
             <div x-show="type !== 'transfer'" class="space-y-4">
-                <div class="grid gap-4 sm:grid-cols-2">
-                    <div>
-                        <label class="ar-label" for="category_id">Categoría</label>
-                        <select id="category_id" name="category_id" class="ar-input" x-model="categoryId" @change="subcategoryId = ''">
-                            <option value="">—</option>
-                            <template x-for="cat in filteredCategories" :key="cat.id">
-                                <option :value="cat.id" x-text="cat.name" :selected="String(categoryId) === String(cat.id)"></option>
-                            </template>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="ar-label" for="subcategory_id">Subcategoría</label>
-                        <select id="subcategory_id" name="subcategory_id" class="ar-input" x-model="subcategoryId">
-                            <option value="">—</option>
-                            <template x-for="sub in filteredSubs" :key="sub.id">
-                                <option :value="sub.id" x-text="sub.name"></option>
-                            </template>
-                        </select>
-                    </div>
+                <div>
+                    <label class="ar-label" for="concept_q">Concepto (plan de cuentas)</label>
+                    <input id="concept_q" type="search" class="ar-input mb-2" placeholder="Buscar: comb, susc, abono…" x-model="conceptQuery">
+                    <select id="chart_account_id" name="chart_account_id" class="ar-input" x-model="chartAccountId" @change="onConceptChange()">
+                        <option value="">—</option>
+                        <template x-for="c in filteredConcepts" :key="c.id">
+                            <option :value="c.id" x-text="c.path"></option>
+                        </template>
+                    </select>
+                    <p class="ar-muted mt-1 text-xs" x-show="selectedConcept" x-text="selectedConcept?.path"></p>
                 </div>
 
                 <div>
@@ -159,9 +196,6 @@
                             </option>
                         @endforeach
                     </select>
-                    <p class="ar-muted mt-1 text-xs" x-show="selectedAccount?.is_liability && type === 'expense'">
-                        Tarjeta/pasivo: el gasto incrementa la deuda de la tarjeta; el pago de resumen es transferencia (no duplica egreso).
-                    </p>
                 </div>
 
                 <div x-show="type === 'income'" class="space-y-3 rounded border p-3" style="border-color: var(--ar-border);">
@@ -177,9 +211,7 @@
                     </div>
                     <label class="flex items-center gap-2 text-sm">
                         <input type="checkbox" name="apply_to_cc" id="apply_to_cc" value="1" x-model="applyToCc" @checked(old('apply_to_cc', $decision['apply_to_cc'] ?? ($preselectClient ? true : false)))>
-                        <span x-text="applyToCc ? 'Cobro a CC (aplica cargos · no es ingreso genérico)' : 'Aplicar a cuenta corriente (cobro / cargos abiertos)'">
-                            Aplicar a cuenta corriente (cobro / cargos abiertos)
-                        </span>
+                        <span>Aplicar a cuenta corriente (cobro / cargos abiertos)</span>
                     </label>
                     <p class="ar-muted text-xs" x-show="applyToCc">
                         Un solo ingreso financiero. Deuda abierta ({{ $currencyHint }}): {{ number_format((float) $openDebt, 2, ',', '.') }}

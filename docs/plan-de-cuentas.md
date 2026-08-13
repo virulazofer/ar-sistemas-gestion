@@ -1,76 +1,114 @@
-# Plan de cuentas
+# Plan de cuentas (ETAPA 11F — modelo único)
 
-Jerarquía contable usada por categorías financieras y movimientos.
+Clasificación económica/contable central de AR Sistemas. **Un solo árbol jerárquico.**
 
-## Conceptos (no confundir)
-
-| Concepto | Modelo | Qué es | Dónde se ve |
-|----------|--------|--------|-------------|
-| **Cuenta financiera** | `financial_accounts` | Dónde vive el dinero (efectivo, banco, billetera, tarjeta) | Finanzas → Cuentas |
-| **Categoría / subcategoría** | `categories` / `subcategories` | Clasificación operativa del día a día | Finanzas → Categorías |
-| **Cuenta contable (plan)** | `chart_accounts` | Estructura Activo / Pasivo / Patrimonio / Ingreso / Gasto / Resultado | Finanzas → Plan de cuentas |
-| **Cuenta corriente (CC)** | `client_ledger_entries` (+ cargos/recibos) | Deuda / crédito del cliente (no es caja ni plan) | Clientes → CC |
+## Dimensiones de una operación
 
 ```
-Movimiento (ingreso/gasto/transferencia)
-├─ Cuenta financiera  → Caja ARS / Banco / Visa (pasivo)
-├─ Categoría → Subcategoría  → clasificación operativa
-├─ Cuenta contable (plan)  → resuelta por mapeo dinámico
-└─ (opcional) Cliente / CC  → cobro aplicado sin duplicar ingreso
+OPERACIÓN
+│
+├── ¿Qué ocurrió?
+│      PLAN DE CUENTAS
+│
+├── ¿Dónde entró/salió?
+│      CUENTA FINANCIERA
+│
+├── ¿Qué ámbito/origen tiene?
+│      EGRESO: Personal / Profesional / Mixto
+│      INGRESO: Profesional / Financiero
+│
+└── ¿Con quién?
+       CLIENTE / PROVEEDOR (cuando corresponda)
 ```
 
-Organigrama de impacto en reportes:
+| Dimensión | Modelo | Pregunta |
+|-----------|--------|----------|
+| Plan de cuentas | `chart_accounts` | ¿Qué fue? |
+| Cuenta financiera | `financial_accounts` | ¿Dónde entró/salió el dinero? |
+| Ámbito / Origen | `movements.scope` | Personal/Profesional/Mixto o Profesional/Financiero |
+| Cliente / Proveedor | maestros CC | ¿Con quién? |
+| Fecha / Importe | movimiento | ¿Cuándo / cuánto? |
 
+**No** duplicar cuentas del plan por ámbito. Impuestos viven bajo Activo / Pasivo / Egresos (sin 6.ª raíz).
+
+## Cinco raíces protegidas
+
+1 ACTIVO · 2 PASIVO · 3 PATRIMONIO NETO · 4 INGRESOS · 5 EGRESOS
+
+No se eliminan, no se mueven, no cambian de naturaleza. El **código visible ≠ id** de base.
+
+## Ámbito / Origen
+
+- **Egresos:** Personal | Profesional | Mixto  
+- **Ingresos (nueva carga):** Profesional | Financiero (no Personal/Mixto)  
+- Históricos Ingreso+Personal: **no** convertir en silencio → dry-run
+
+## Cuentas financieras → ubicación contable
+
+Automático por tipo (sin mapeo por movimiento):
+
+| Tipo FA | Ubicación plan |
+|---------|----------------|
+| Efectivo | 1.1.1 Caja / Efectivo |
+| Banco | 1.1.2 Bancos |
+| Billetera | 1.1.3 Billeteras virtuales |
+| Tarjeta | 2.1 Tarjetas de crédito |
+
+## Compatibilidad
+
+Tablas `categories` / `subcategories` se mantienen en migración progresiva (dual-read/dual-write). La UX cotidiana usa el plan (Concepto). Menú simplificado: **Plan de cuentas · Cuentas financieras · Clasificar movimientos (N)**.
+
+## Dry-run
+
+```bash
+php artisan chart:dry-run-11f --json=exports/11f/dry-run.json
+# Solo infraestructura (árbol + link FA + remap masters; SIN movimientos):
+php artisan chart:dry-run-11f --infra
 ```
-Movimiento
-  → Categoría / Subcategoría
-      → Mapeo (precedencia abajo)
-          → Cuenta contable
-              → Reportes por plan / árbol con totales
-  → Cuenta financiera
-      → Saldos de caja/banco/tarjeta
-  → CC (si aplica)
-      → Ranking a cobrar / a favor (convención presentación)
-```
 
-## Precedencia de mapeo
+**DETENERSE antes del apply masivo de movimientos.**
 
-1. Subcategoría (`subcategories.chart_account_id`)
-2. Categoría (`categories.chart_account_id`)
-3. Default por tipo de movimiento (ingreso/gasto) en settings
-4. Sin asignar (`null`)
+## Ayuda breve
 
-Las reglas son dinámicas: al **crear** un movimiento se resuelve en el momento. Materializar el plan en movimientos **ya existentes** solo vía **preview + auditoría + aplicar** (UI Mapeo). No reescribir cientos de filas a mano.
+- **Créditos:** dinero que terceros le deben al negocio (p. ej. saldos de clientes). Detalle operativo = maestro Clientes/CC; el plan agrega en 1.2.1.  
+- **Patrimonio Neto:** diferencia entre lo que el negocio posee y lo que debe (capital, aportes, resultados).
 
-## Eliminación de cuentas del plan
+## Ejemplos A–H
 
-No hay “indeleble por diseño”. Desde Editar → Eliminar:
+### A. Compra combustible con Mercado Pago
+- Usuario: Egreso · Ámbito Profesional · Concepto Automotor › Combustible · FA Mercado Pago  
+- Plan: 5.3.1 · FA ubicación: 1.1.3 Billeteras · CC: no
 
-- **Reasignar** referencias (categorías, subcategorías, movimientos, defaults de tipo) a otra cuenta
-- **Dejar sin asignar** (`null`)
-- **Cancelar**
-- **Hijas**: reparentar al destino/padre, o bloquear mientras existan
+### B. Pago VISA desde Patagonia
+- Usuario: Transferencia Patagonia → VISA  
+- Plan económico del gasto ya quedó al consumir; este flujo mueve disponibilidad (1.1.2) vs pasivo tarjeta (2.1)  
+- No duplica egreso
 
-Queda auditoría `chart_account_deleted`.
+### C. Venta equipo cobrada por Patagonia
+- Usuario: Ingreso · Origen Profesional · Concepto Ventas › Equipos · FA Patagonia · Cliente opcional  
+- Plan: 4.1.1 · FA: 1.1.2
 
-## UI
+### D. Venta a DAASA a cuenta corriente
+- Circuito comercial: cargo CC (aumenta crédito clientes) · **no** inventa caja  
+- Agregado contable: 1.2.1 Clientes (detalle en ficha DAASA)
 
-- Listado jerárquico con **totales reales** (ARS / cantidad de movimientos)
-- Alerta roja si hay N movimientos sin cuenta → asistente de mapeo
-- Mapa interactivo
-- Herramienta de mapeo: asignar cat/sub, defaults por tipo, crear cuenta inline, preview/aplicar
-- Alta/edición con padre, tipo, código, vista de impacto (“usado por”) y eliminación real
+### E. Cobro posterior de DAASA
+- Cobro CC + FA · un solo ingreso financiero · aplica cargos  
+- Plan según concepto del cobro/ingreso; FA cambia; CC baja
 
-## UX cotidiana (11F-7)
+### F. Intereses acreditados por Mercado Pago
+- Ingreso · Origen Financiero · Concepto Ingresos financieros › Intereses · FA MP  
+- Plan: 4.3.1
 
-- En **Categorías** solo se elige categoría/subcategoría. La cuenta contable se asigna en **Mapeo al plan**.
-- Categorías históricas Excel (**Super**, **Comidas**, **Miranda**, **Servicios**, etc.) son clasificación operativa importada (`excel_name`), no cuentas del plan. Se mapean al plan desde el asistente.
-- Jerarquía del **plan**: raíces permitidas (`parent_id` vacío); reparent con guarda de ciclos.
+### G. Gasto personal de supermercado
+- Egreso · Personal · Alimentación › Supermercado · FA caja/billetera  
+- Plan: 5.1.1
 
-## Cache de settings
+### H. Gasto mixto de Internet
+- Egreso · Mixto · Servicios › Internet · FA correspondiente  
+- Plan: 5.2.3 · ámbito Mixto analítico (sin cuenta duplicada)
 
-`Setting::getValue` cachea solo arrays `{type,value}`. Nunca modelos Eloquent: con `CACHE_STORE=database` provocaban `__PHP_Incomplete_Class` y HTTP 500 en `/plan-de-cuentas/mapeo`.
+## Migración
 
-## Impacto
-
-Al editar una cuenta se muestra cuántas categorías, subcategorías, movimientos e hijas la referencian. Cambiar el mapeo **no** recalcula FX congelado ni toca histórico 11E/11E-R.
+1. Auditar · 2. Seed raíces/árbol · 3. Nueva UX · 4. Dry-run · 5. Tests · 6. Deploy código  
+**Apply masivo de datos: solo con aprobación explícita del usuario.**

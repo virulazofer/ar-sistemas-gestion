@@ -11,6 +11,7 @@ use App\Rules\Cuit;
 use App\Rules\Luhn;
 use App\Services\AuditLogger;
 use App\Services\Finance\BalanceService;
+use App\Services\Finance\FinancialAccountChartLinker;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -20,6 +21,7 @@ class FinancialAccountController extends Controller
 {
     public function __construct(
         private readonly BalanceService $balances,
+        private readonly FinancialAccountChartLinker $chartLinker,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -64,6 +66,7 @@ class FinancialAccountController extends Controller
             'cached_balance' => 0,
             'is_liability' => AccountType::from($data['type'])->isLiability(),
         ]);
+        $this->chartLinker->link($account, force: true);
 
         $this->audit->log('account_created', $account, null, $account->only([
             'name', 'type', 'currency_id', 'status', 'cbu_cvu', 'cuit', 'card_last4', 'card_brand',
@@ -99,6 +102,7 @@ class FinancialAccountController extends Controller
         $data['is_liability'] = $type->isLiability();
 
         $financial_account->update($data);
+        $this->chartLinker->link($financial_account->fresh(), force: true);
         $this->audit->log('account_updated', $financial_account, $old, $financial_account->only([
             'name', 'type', 'status', 'description', 'cbu_cvu', 'cuit', 'card_last4', 'card_brand', 'card_holder',
         ]), 'Cuenta actualizada');

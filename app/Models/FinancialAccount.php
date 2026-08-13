@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'name',
     'type',
     'currency_id',
+    'chart_account_id',
     'account_holder_id',
     'is_liability',
     'alias',
@@ -43,6 +44,11 @@ class FinancialAccount extends Model
     public function currency(): BelongsTo
     {
         return $this->belongsTo(Currency::class);
+    }
+
+    public function chartAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartAccount::class);
     }
 
     public function holder(): BelongsTo

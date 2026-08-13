@@ -49,9 +49,20 @@
                 <div class="ar-side-sub" x-show="groups.mae && (drawer || !collapsed)" x-cloak>
                     @can('clients.view')<a href="{{ route('clients.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('clients.index') || request()->routeIs('clients.create') || request()->routeIs('clients.show') || request()->routeIs('clients.edit') || request()->routeIs('clients.current-accounts') ? 'is-active' : '' }}"><span class="ar-side-label">Clientes</span></a>@endcan
                     @can('suppliers.view')<a href="{{ route('suppliers.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('suppliers.*') ? 'is-active' : '' }}"><span class="ar-side-label">Proveedores</span></a>@endcan
-                    @can('categories.view')<a href="{{ route('categories.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('categories.*') || request()->routeIs('subcategories.*') ? 'is-active' : '' }}"><span class="ar-side-label">Categorías financieras</span></a>@endcan
-                    @can('categories.view')<a href="{{ route('chart-accounts.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('chart-accounts.*') ? 'is-active' : '' }}"><span class="ar-side-label">Plan de cuentas</span></a>@endcan
-                    @can('reports.view')<a href="{{ route('reports.show', 'chart-accounts') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('reports.show') && request()->route('type') === 'chart-accounts' ? 'is-active' : '' }}"><span class="ar-side-label">Reporte plan de cuentas</span></a>@endcan
+                    @can('categories.view')<a href="{{ route('chart-accounts.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('chart-accounts.index') || request()->routeIs('chart-accounts.create') || request()->routeIs('chart-accounts.edit') || request()->routeIs('categories.*') || request()->routeIs('subcategories.*') ? 'is-active' : '' }}"><span class="ar-side-label">Plan de cuentas</span></a>@endcan
+                    @php
+                        $pendingClassify = 0;
+                        try {
+                            if (auth()->user()?->can('categories.view')) {
+                                $pendingClassify = app(\App\Services\Finance\ChartAccountMappingService::class)->classificationProgress()['pending'] ?? 0;
+                            }
+                        } catch (\Throwable) { $pendingClassify = 0; }
+                    @endphp
+                    @can('categories.view')
+                        <a href="{{ route('chart-accounts.classify') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('chart-accounts.classify') || request()->routeIs('chart-accounts.unclassified') || request()->routeIs('chart-accounts.mapping') ? 'is-active' : '' }}">
+                            <span class="ar-side-label">Clasificar movimientos @if($pendingClassify > 0)<span class="ar-muted">({{ $pendingClassify }})</span>@endif</span>
+                        </a>
+                    @endcan
                 </div>
             </div>
         @endcanany
@@ -64,7 +75,7 @@
                     <svg class="ar-side-chevron ml-auto h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" :class="groups.fin ? 'rotate-180' : ''"><path d="M5.25 7.5 10 12.25 14.75 7.5"/></svg>
                 </button>
                 <div class="ar-side-sub" x-show="groups.fin && (drawer || !collapsed)" x-cloak>
-                    @can('accounts.view')<a href="{{ route('accounts.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('accounts.*') ? 'is-active' : '' }}"><span class="ar-side-label">Cuentas</span></a>@endcan
+                    @can('accounts.view')<a href="{{ route('accounts.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('accounts.*') ? 'is-active' : '' }}"><span class="ar-side-label">Cuentas financieras</span></a>@endcan
                     @can('movements.view')<a href="{{ route('movements.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('movements.index') || request()->routeIs('movements.show') ? 'is-active' : '' }}"><span class="ar-side-label">Movimientos</span></a>@endcan
                     @can('exchange_rates.view')<a href="{{ route('exchange-rates.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('exchange-rates.*') ? 'is-active' : '' }}"><span class="ar-side-label">Cotizaciones</span></a>@endcan
                 </div>

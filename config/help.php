@@ -3,15 +3,15 @@
 return [
     'movements.quick' => [
         'title' => 'Carga de movimiento',
-        'summary' => 'Registro rápido de ingresos, egresos y transferencias. Orden: Fecha → Ámbito → Descripción → Categoría → Subcategoría → Importe → Cuenta financiera.',
+        'summary' => 'Registro rápido. Egreso: Ámbito P/P/M · Ingreso: Origen Profesional/Financiero · Concepto = hoja del plan.',
         'bullets' => [
-            'Ingreso: Cliente opcional + «Aplicar a CC» reutiliza el cobro (un solo crédito financiero).',
-            'Sin deuda suficiente: A pago a cuenta · B crear cargo+aplicar · C solo ingreso · D cancelar. No se inventa deuda.',
-            'Gasto en tarjeta/pasivo: etiqueta «Cuenta debitada (pasivo)»; el pago de resumen es transferencia.',
-            'El sistema congela ARS/USD según la cotización de la fecha del movimiento.',
+            'Concepto busca en el plan (ej. «comb» → Automotor › Combustible).',
+            'Ámbito/origen se sugiere según la cuenta pero siempre es editable.',
+            'Ingreso: Cliente opcional + «Aplicar a CC» = un solo crédito financiero.',
+            'Cuenta financiera = dónde entra/sale el dinero (distinta del plan).',
         ],
-        'diagram' => "Movimiento\n├─ Cuenta financiera (caja/banco/tarjeta) ← dónde vive el dinero\n├─ Categoría / Subcategoría ← clasificación operativa\n├─ Cuenta contable (plan) ← resuelta por mapeo dinámico\n└─ Cliente/CC (opcional en ingresos) ← cobro sin duplicar ingreso",
-        'flow' => 'Completar datos → Guardar → Confirmación compacta (cuenta acreditada/debitada) → posted.',
+        'diagram' => "OPERACIÓN\n├─ Plan de cuentas (qué)\n├─ Cuenta financiera (dónde)\n├─ Ámbito/Origen (quién)\n└─ Cliente/Proveedor (cuando corresponda)",
+        'flow' => 'Tipo → Fecha → Ámbito/Origen → Descripción → Concepto → Importe → Cuenta financiera → Guardar.',
     ],
     'dashboard' => [
         'title' => 'Tablero operativo',
@@ -165,14 +165,14 @@ return [
     ],
     'chart_accounts' => [
         'title' => 'Plan de cuentas',
-        'summary' => 'Jerarquía patrimonial (Activos/Pasivos/…); distinta de la clasificación operativa cat/sub.',
+        'summary' => 'Clasificación económica única (Activo/Pasivo/Patrimonio Neto/Ingresos/Egresos). Árbol a la izquierda, detalle a la derecha.',
         'bullets' => [
-            'QUÉ ES: el plan contable (cuenta contable), no la caja/banco ni el árbol de gastos diario.',
-            'PARA QUÉ: vistas patrimoniales/financieras; el día a día se clasifica por Naturaleza→Cat→Sub.',
-            'ACCIÓN: alerta de pendientes → Clasificar movimientos (sin categoría) → reglas opcionales.',
-            'Progreso operativo: totales / con categoría / sin categoría / %.',
+            'Cinco raíces protegidas; códigos visibles ≠ IDs.',
+            'Créditos: dinero que terceros deben (detalle operativo en Clientes/CC).',
+            'Patrimonio Neto: lo que el negocio posee menos lo que debe.',
+            'Menú: Plan de cuentas · Cuentas financieras · Clasificar movimientos (N).',
         ],
-        'diagram' => "Naturaleza → Categoría → Subcategoría (± Plan patrimonial)\nCuenta financiera ≠ Categoría ≠ Plan ≠ CC",
+        'diagram' => "OPERACIÓN\n├─ Plan (qué) · FA (dónde) · Ámbito/Origen · Cliente/Proveedor",
     ],
     'chart_accounts.mapping' => [
         'title' => 'Mapeo patrimonial cat/sub → plan',

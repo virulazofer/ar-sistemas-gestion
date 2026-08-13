@@ -130,7 +130,7 @@ test('categorias create no pide plan; mapeo asigna cuenta', function () {
         'code' => '5.99', 'name' => 'Gastos test', 'type' => ChartAccountType::Expense, 'is_active' => true, 'sort_order' => 1,
     ]);
 
-    $html = $this->get(route('categories.index'))->assertOk()->getContent();
+    $html = $this->get(route('categories.index', ['legacy' => 1]))->assertOk()->getContent();
     expect($html)->not->toContain('name="chart_account_id"')
         ->and($html)->toContain('Mapeo al plan');
 
@@ -152,30 +152,30 @@ test('plan de cuentas: raiz permitida y guarda ciclo', function () {
     $this->actingAs($admin);
 
     $root = ChartAccount::query()->create([
-        'code' => '5', 'name' => 'Gastos', 'type' => ChartAccountType::Expense, 'is_active' => true, 'sort_order' => 1,
+        'code' => '5', 'name' => 'EGRESOS', 'type' => ChartAccountType::Expense, 'is_active' => true, 'is_protected' => true, 'sort_order' => 1,
     ]);
     $child = ChartAccount::query()->create([
-        'code' => '5.1', 'name' => 'Personal', 'type' => ChartAccountType::Expense, 'parent_id' => $root->id, 'is_active' => true, 'sort_order' => 1,
+        'code' => '5.1', 'name' => 'Alimentación', 'type' => ChartAccountType::Expense, 'parent_id' => $root->id, 'is_active' => true, 'sort_order' => 1,
     ]);
     $grand = ChartAccount::query()->create([
         'code' => '5.1.1', 'name' => 'Comidas', 'type' => ChartAccountType::Expense, 'parent_id' => $child->id, 'is_active' => true, 'sort_order' => 1,
     ]);
 
-    // Promover hija a raíz.
+    // 11F: no se pueden promover cuentas a raíz (solo 5 raíces estructurales).
     $this->put(route('chart-accounts.update', $child), [
         'code' => '5.1',
-        'name' => 'Personal',
+        'name' => 'Alimentación',
         'type' => ChartAccountType::Expense->value,
         'parent_id' => '',
         'sort_order' => 1,
         'is_active' => 1,
-    ])->assertRedirect(route('chart-accounts.index'));
-    expect($child->fresh()->parent_id)->toBeNull();
+    ])->assertSessionHasErrors('parent_id');
+    expect($child->fresh()->parent_id)->toBe($root->id);
 
     // Ciclo: padre = nieto.
     $this->put(route('chart-accounts.update', $child), [
         'code' => '5.1',
-        'name' => 'Personal',
+        'name' => 'Alimentación',
         'type' => ChartAccountType::Expense->value,
         'parent_id' => $grand->id,
         'sort_order' => 1,

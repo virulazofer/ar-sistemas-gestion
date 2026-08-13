@@ -34,7 +34,23 @@ return [
     'scopes' => [
         'personal' => 'Personal',
         'professional' => 'Profesional',
+        'mixed' => 'Mixto',
+        'financial' => 'Financiero',
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Plan de cuentas — ubicación contable de cuentas financieras
+    |--------------------------------------------------------------------------
+    */
+    'financial_account_chart_codes' => [
+        'cash' => '1.1.1',
+        'bank' => '1.1.2',
+        'wallet' => '1.1.3',
+        'credit_card' => '2.1',
+        'other' => '1.1.1',
+    ],
+
 
     'movement_types' => [
         'income' => \App\Support\UiLabels::get('income', 'Ingresos'),

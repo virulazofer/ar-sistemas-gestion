@@ -23,8 +23,15 @@ class CategoryController extends Controller
         private readonly CategoryReclassificationService $reclass,
     ) {}
 
-    public function index(Request $request): View
+    public function index(Request $request): View|RedirectResponse
     {
+        // UX 11F: categorías operativas convergen con Plan de cuentas (compatibilidad dual-read).
+        if (! $request->boolean('legacy')) {
+            return redirect()
+                ->route('chart-accounts.index')
+                ->with('status', 'Las categorías financieras convergen con el Plan de cuentas. Vista legacy: ?legacy=1');
+        }
+
         $from = $request->filled('from') ? Carbon::parse($request->string('from'))->startOfDay() : now()->startOfMonth();
         $to = $request->filled('to') ? Carbon::parse($request->string('to'))->endOfDay() : now()->endOfDay();
 

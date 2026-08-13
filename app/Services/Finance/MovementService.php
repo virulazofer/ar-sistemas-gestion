@@ -24,6 +24,8 @@ class MovementService
         private readonly BalanceService $balances,
         private readonly ExchangeRateService $rates,
         private readonly ChartAccountMappingService $chartMapping,
+        private readonly ChartConceptCompatibility $concepts,
+        private readonly ScopeOriginRules $scopeRules,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -37,6 +39,7 @@ class MovementService
      *   movement_time?: string,
      *   category_id?: int|null,
      *   subcategory_id?: int|null,
+     *   chart_account_id?: int|null,
      *   description?: string|null,
      *   exchange_rate_id?: int|null,
      *   client_id?: int|null,
@@ -49,6 +52,8 @@ class MovementService
         if ($type->isTransfer()) {
             throw new InvalidArgumentException('Usá createTransfer() para transferencias.');
         }
+
+        $this->scopeRules->assertAllowed($type, (string) $data['scope']);
 
         return DB::transaction(function () use ($data, $type) {
             $account = FinancialAccount::query()->lockForUpdate()->findOrFail($data['financial_account_id']);
@@ -63,15 +68,20 @@ class MovementService
             $fx = $this->resolveFxSnapshot($account, $data['exchange_rate_id'] ?? null, $movementDate);
             $equivalents = $this->equivalents($account->currency->code, $amount, $fx['value']);
 
-            $categoryId = $data['category_id'] ?? null;
-            $subcategoryId = $data['subcategory_id'] ?? null;
+            $resolved = $this->concepts->resolveFromInput(
+                ! empty($data['chart_account_id']) ? (int) $data['chart_account_id'] : null,
+                ! empty($data['category_id']) ? (int) $data['category_id'] : null,
+                ! empty($data['subcategory_id']) ? (int) $data['subcategory_id'] : null,
+            );
+            $categoryId = $resolved['category_id'];
+            $subcategoryId = $resolved['subcategory_id'];
             if ($subcategoryId) {
                 $sub = Subcategory::query()->find($subcategoryId);
                 if ($sub && $categoryId && (int) $sub->category_id !== (int) $categoryId) {
                     throw new InvalidArgumentException('La subcategoría no pertenece a la categoría indicada.');
                 }
             }
-            $chartAccountId = $data['chart_account_id']
+            $chartAccountId = $resolved['chart_account_id']
                 ?? $this->chartMapping->resolve(
                     $categoryId,
                     $subcategoryId,

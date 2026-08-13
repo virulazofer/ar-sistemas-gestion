@@ -494,6 +494,8 @@ Route::middleware(['auth'])->group(function () {
 
     Route::middleware('permission:categories.view')->group(function () {
         Route::get('/plan-de-cuentas', [ChartAccountController::class, 'index'])->name('chart-accounts.index');
+        Route::get('/plan-de-cuentas/buscar', [ChartAccountController::class, 'search'])->name('chart-accounts.search');
+        Route::get('/plan-de-cuentas/sugerir-ambito', [ChartAccountController::class, 'suggestScope'])->name('chart-accounts.suggest-scope');
         Route::get('/plan-de-cuentas/mapa', [ChartAccountController::class, 'map'])->name('chart-accounts.map');
         Route::get('/plan-de-cuentas/mapeo', [ChartAccountController::class, 'mappingTool'])->name('chart-accounts.mapping');
         Route::get('/plan-de-cuentas/movimientos-sin-clasificar', [UnclassifiedMovementController::class, 'index'])->name('chart-accounts.unclassified');

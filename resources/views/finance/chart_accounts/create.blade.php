@@ -20,8 +20,8 @@
         </div>
         <div>
             <label class="ar-label">Cuenta padre</label>
-            <select name="parent_id" class="ar-input" x-model="parentId">
-                <option value="">— Raíz —</option>
+            <select name="parent_id" class="ar-input" x-model="parentId" required>
+                <option value="">— Elegir padre (bajo una de las 5 raíces) —</option>
                 @foreach ($parents as $p)
                     <option value="{{ $p->id }}">{{ $p->code }} — {{ $p->name }}</option>
                 @endforeach
