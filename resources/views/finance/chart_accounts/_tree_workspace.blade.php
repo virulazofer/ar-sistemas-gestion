@@ -6,24 +6,30 @@
     $isSelected = (int) ($selectedId ?? 0) === (int) $node['id'];
     $pad = max(0, (int) $depth) * 12;
     $hasChildren = ! empty($node['children']);
-    $nodeJson = [
-        'code' => $node['code'],
-        'name' => $node['name'],
-        'path' => ($node['code'] ?? '').' '.$node['name'],
-        'children' => collect($node['children'] ?? [])->map(fn ($c) => [
-            'code' => $c['code'], 'name' => $c['name'], 'path' => $c['code'].' '.$c['name'],
-            'children' => $c['children'] ?? [],
-        ])->all(),
-    ];
+    $flattenSearch = function (array $n) use (&$flattenSearch): string {
+        $parts = [($n['code'] ?? '').' '.($n['name'] ?? '')];
+        foreach ($n['children'] ?? [] as $child) {
+            $parts[] = $flattenSearch($child);
+        }
+
+        return mb_strtolower(implode(' ', $parts));
+    };
+    $searchBlob = $flattenSearch($node);
 @endphp
-<div class="mb-0.5"
-     x-data="{ node: @js($nodeJson), openLocal: {{ $isSelected || $depth < 1 ? 'true' : 'false' }} }"
-     x-show="matches(node)"
-     x-cloak>
+{{-- Roots must stay visible without Alpine: no x-cloak on nodes (defaults visible). --}}
+<div class="mb-0.5 ar-chart-tree-node"
+     data-account-id="{{ $node['id'] }}"
+     x-data="{ openLocal: {{ $isSelected || $depth < 1 ? 'true' : 'false' }}, searchBlob: @js($searchBlob) }"
+     x-show="!(treeQ || '').trim() || searchBlob.includes((treeQ || '').toLowerCase().trim())">
     <div class="flex items-center gap-1 rounded px-1 py-1 {{ $isSelected ? 'font-semibold ring-1' : 'hover:bg-black/5' }}"
          style="padding-left: {{ $pad }}px; {{ $isSelected ? 'background: var(--ar-surface-2, #f3f4f6); --tw-ring-color: var(--ar-border);' : '' }}">
         @if ($hasChildren)
-            <button type="button" class="ar-muted text-xs w-4 shrink-0" @click="openLocal = !openLocal" :aria-expanded="openLocal">▸</button>
+            <button type="button"
+                    class="ar-muted text-xs ar-chart-caret"
+                    :class="openLocal ? 'is-open' : ''"
+                    @click.stop="openLocal = !openLocal"
+                    :aria-expanded="openLocal"
+                    aria-label="Expandir o contraer">▸</button>
         @else
             <span class="w-4 shrink-0"></span>
         @endif
@@ -40,7 +46,7 @@
         </span>
     </div>
     @if ($hasChildren)
-        <div x-show="openLocal || (treeQ && treeQ.length > 0)">
+        <div x-show="openLocal || !!(treeQ && treeQ.length)">
             @foreach ($node['children'] as $child)
                 @include('finance.chart_accounts._tree_workspace', [
                     'node' => $child,

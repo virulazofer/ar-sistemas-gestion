@@ -85,8 +85,8 @@
         <p class="ar-muted text-xs self-end pb-2">{{ $period['label'] ?? '' }}@if($period['from'] && $period['to']): {{ \Carbon\Carbon::parse($period['from'])->format('d/m/Y') }} – {{ \Carbon\Carbon::parse($period['to'])->format('d/m/Y') }}@endif</p>
     </form>
 
-    {{-- MOBILE: navegación progresiva --}}
-    <div class="lg:hidden space-y-3 mb-4">
+    {{-- MOBILE: navegación progresiva (< lg / 1024px) --}}
+    <div class="ar-chart-mobile-nav space-y-3 mb-4">
         <div class="ar-card p-3">
             @if ($navNode)
                 <a href="{{ route('chart-accounts.index', array_merge($qs, $navNode->parent_id ? ['nav' => $navNode->parent_id] : [])) }}" class="ar-muted text-sm underline">
@@ -125,37 +125,30 @@
         </div>
     </div>
 
-    {{-- DESKTOP: dos columnas --}}
+    {{-- DESKTOP (≥1024px): árbol izquierda (~34%) + detalle derecha --}}
     <div
-        class="hidden lg:grid gap-4 lg:grid-cols-12"
-        x-data="{
-            treeQ: @js($treeQ ?? ''),
-            open: {},
-            matches(node) {
-                const q = (this.treeQ || '').toLowerCase().trim()
-                if (!q) return true
-                const hay = ((node.code||'') + ' ' + (node.name||'') + ' ' + (node.path||'')).toLowerCase()
-                if (hay.includes(q)) return true
-                return (node.children || []).some(c => this.matches(c))
-            }
-        }"
+        class="ar-chart-workspace"
+        data-chart-workspace="desktop"
+        x-data="{ treeQ: @js($treeQ ?? '') }"
     >
-        <aside class="ar-card lg:col-span-5 xl:col-span-4 p-3 max-h-[78vh] overflow-auto text-sm">
+        <aside class="ar-card ar-chart-tree-panel p-3 text-sm" data-chart-panel="tree">
             <div class="mb-3 sticky top-0 z-10 pb-2" style="background: var(--ar-surface, #fff);">
                 <p class="font-semibold mb-2">Árbol</p>
-                <input type="search" class="ar-input text-sm" placeholder="Buscar: comb, susc, inter…" x-model="treeQ">
+                <input type="search" class="ar-input text-sm" placeholder="Buscar: comb, susc, inter…" x-model="treeQ" aria-label="Buscar en el árbol">
             </div>
-            @foreach ($roots as $root)
-                @include('finance.chart_accounts._tree_workspace', [
-                    'node' => $root,
-                    'selectedId' => $selected?->id,
-                    'depth' => 0,
-                    'qs' => $qs,
-                ])
-            @endforeach
+            <div class="ar-chart-tree-roots" data-chart-tree-roots>
+                @foreach ($roots as $root)
+                    @include('finance.chart_accounts._tree_workspace', [
+                        'node' => $root,
+                        'selectedId' => $selected?->id,
+                        'depth' => 0,
+                        'qs' => $qs,
+                    ])
+                @endforeach
+            </div>
         </aside>
 
-        <section class="ar-card lg:col-span-7 xl:col-span-8 p-4 max-h-[78vh] overflow-auto">
+        <section class="ar-card ar-chart-detail-panel p-4" data-chart-panel="detail">
             @if ($selected && $detail)
                 @include('finance.chart_accounts._detail_panel', [
                     'selected' => $selected,
@@ -178,7 +171,7 @@
 
     {{-- Mobile detail when account selected --}}
     @if ($selected && $detail)
-        <div class="lg:hidden ar-card p-4 mt-2">
+        <div class="ar-chart-mobile-detail ar-card p-4 mt-2">
             @include('finance.chart_accounts._detail_panel', [
                 'selected' => $selected,
                 'detail' => $detail,

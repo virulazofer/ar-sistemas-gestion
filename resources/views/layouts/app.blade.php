@@ -20,6 +20,36 @@
             .ar-brand { font-family: 'IBM Plex Sans', sans-serif; }
             [x-cloak] { display: none !important; }
 
+            /* Plan de cuentas — layout crítico desktop (independiente del build Vite) */
+            .ar-chart-mobile-nav { display: block; }
+            .ar-chart-workspace { display: none; }
+            .ar-chart-mobile-detail { display: block; }
+            .ar-chart-tree-panel,
+            .ar-chart-detail-panel { min-width: 0; }
+            .ar-chart-caret {
+                display: inline-block;
+                width: 1rem;
+                flex-shrink: 0;
+                transition: transform 0.15s ease;
+                transform-origin: center;
+            }
+            .ar-chart-caret.is-open { transform: rotate(90deg); }
+            @media (min-width: 1024px) {
+                .ar-chart-mobile-nav,
+                .ar-chart-mobile-detail { display: none !important; }
+                .ar-chart-workspace {
+                    display: grid !important;
+                    grid-template-columns: minmax(18rem, 34%) minmax(0, 1fr);
+                    gap: 1rem;
+                    align-items: stretch;
+                }
+                .ar-chart-tree-panel,
+                .ar-chart-detail-panel {
+                    max-height: 78vh;
+                    overflow: auto;
+                }
+            }
+
             .ar-shell-app {
                 min-height: 100vh;
                 display: flex;

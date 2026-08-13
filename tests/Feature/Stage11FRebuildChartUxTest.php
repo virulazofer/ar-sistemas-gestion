@@ -311,11 +311,22 @@ test('AI index responsive markers y nav simplificada', function () {
     rebuildSeed();
     $this->actingAs(makeAdmin());
     $html = $this->get(route('chart-accounts.index'))->assertOk()->getContent();
-    expect($html)->toContain('lg:grid-cols-12')
-        ->and($html)->toContain('lg:hidden')
+    expect($html)->toContain('ar-chart-workspace')
+        ->and($html)->toContain('ar-chart-tree-panel')
+        ->and($html)->toContain('ar-chart-mobile-nav')
+        ->and($html)->toContain('data-chart-tree-roots')
+        ->and($html)->toContain('Activo')
+        ->and($html)->toContain('Pasivo')
+        ->and($html)->toContain('Patrimonio Neto')
+        ->and($html)->toContain('Ingresos')
+        ->and($html)->toContain('Egresos')
+        ->and($html)->toContain('Radiografía del período')
         ->and($html)->toContain('Configuración avanzada')
         ->and($html)->not->toContain('Asignación al plan</span>')
         ->and($html)->not->toContain('Reglas automáticas');
+
+    // Tree nodes must not use x-cloak (would stay invisible if Alpine fails / CSS hides them).
+    expect(preg_match('/ar-chart-tree-node[^>]*x-cloak/', $html))->toBe(0);
 
     $this->get(route('chart-accounts.advanced'))->assertOk()->assertSee('Clasificaciones recordadas');
     $this->get(route('remembered-classifications.index'))->assertOk();
