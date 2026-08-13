@@ -170,13 +170,13 @@ return [
             'Cinco raíces protegidas; códigos visibles ≠ IDs.',
             'Créditos: dinero que terceros deben (detalle operativo en Clientes/CC).',
             'Patrimonio Neto: lo que el negocio posee menos lo que debe.',
-            'Menú bajo Plan: Ver plan · Pendientes · Asignación · Reglas automáticas.',
+            'Uso diario: Plan de cuentas + Cuentas financieras. Pendientes solo si hay alertas. Clasificaciones recordadas en Configuración avanzada.',
         ],
         'diagram' => "OPERACIÓN\n├─ Plan (qué) · FA (dónde) · Ámbito/Origen · Cliente/Proveedor",
     ],
     'chart_accounts.mapping' => [
-        'title' => 'Asignación al plan de cuentas',
-        'summary' => 'Opcional. Vincula categoría/subcategoría con cuentas del plan. Precedencia: manual → sub → cat → regla → pendiente.',
+        'title' => 'Vinculaciones contables',
+        'summary' => 'Configuración avanzada. Vincula categoría/subcategoría con cuentas del plan. Precedencia: manual → sub → cat → regla → pendiente.',
         'bullets' => [
             'La cola diaria es «Pendientes de clasificación» (sin categoría), no exigir cuenta del plan redundante.',
             'Materializá históricos solo con vista previa: N coinciden · X manuales · Y cambiarían · Z intactos.',

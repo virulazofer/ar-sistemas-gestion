@@ -1,122 +1,93 @@
-# Plan de cuentas (ETAPA 11F — modelo único)
+# Plan de cuentas — guía de uso
 
-Clasificación económica/contable central de AR Sistemas. **Un solo árbol jerárquico.**
+El Plan de cuentas responde una sola pregunta: **¿qué fue la operación?**  
+No es la cuenta del banco ni la tarjeta: eso es la **cuenta financiera** (¿dónde entró o salió el dinero?).
 
-## Dimensiones de una operación
+## Las cinco raíces
 
-```
-OPERACIÓN
-│
-├── ¿Qué ocurrió?
-│      PLAN DE CUENTAS
-│
-├── ¿Dónde entró/salió?
-│      CUENTA FINANCIERA
-│
-├── ¿Qué ámbito/origen tiene?
-│      EGRESO: Personal / Profesional / Mixto
-│      INGRESO: Profesional / Financiero
-│
-└── ¿Con quién?
-       CLIENTE / PROVEEDOR (cuando corresponda)
-```
+| Código | Nombre | En pocas palabras |
+|--------|--------|-------------------|
+| 1 | ACTIVO | Bienes, dinero y derechos con valor económico |
+| 2 | PASIVO | Deudas y obligaciones pendientes |
+| 3 | PATRIMONIO NETO | Diferencia simplificada entre lo que se posee y lo que se debe, más aportes y resultados |
+| 4 | INGRESOS | Entradas económicas clasificadas |
+| 5 | EGRESOS | Gastos clasificados |
 
-| Dimensión | Modelo | Pregunta |
-|-----------|--------|----------|
-| Plan de cuentas | `chart_accounts` | ¿Qué fue? |
-| Cuenta financiera | `financial_accounts` | ¿Dónde entró/salió el dinero? |
-| Ámbito / Origen | `movements.scope` | Personal/Profesional/Mixto o Profesional/Financiero |
-| Cliente / Proveedor | maestros CC | ¿Con quién? |
-| Fecha / Importe | movimiento | ¿Cuándo / cuánto? |
+Las raíces no se eliminan, no se mueven y no cambian de naturaleza. Debajo de ellas sí podés crear, editar, mover y desactivar subcuentas.
 
-**No** duplicar cuentas del plan por ámbito. Impuestos viven bajo Activo / Pasivo / Egresos (sin 6.ª raíz).
+## Activo, Pasivo, Patrimonio y Créditos
 
-## Cinco raíces protegidas
+- **Activo → Disponibilidades**: se alimenta de las cuentas financieras (caja, bancos, billeteras). No hace falta cargar un asiento aparte.
+- **Activo → Créditos → Clientes**: muestra cuánto te deben (total a cobrar + ranking). El rojo indica “nos deben”. Click en un cliente abre su ficha / CC. No duplica la cuenta corriente.
+- **Activo → Bienes de cambio**: preparado para valuación FIFO; si aún no hay método fiable verás *Valuación de inventario no disponible* (no un $0 engañoso).
+- **Activo → Bienes de uso**: estructura de equipos, MYU, instrumentos, propiedades, vehículos, etc.
+- **Pasivo**: tarjetas se derivan de cuentas financieras tipo tarjeta cuando hay datos; proveedores muestran *Sin datos suficientes* si no hay operatoria fiable.
+- **Patrimonio Neto**: ayuda contextual; no inventamos saldos ni pedimos asientos avanzados para usar el sistema día a día.
 
-1 ACTIVO · 2 PASIVO · 3 PATRIMONIO NETO · 4 INGRESOS · 5 EGRESOS
+## Plan vs cuenta financiera
 
-No se eliminan, no se mueven, no cambian de naturaleza. El **código visible ≠ id** de base.
+| | Plan de cuentas | Cuenta financiera |
+|--|-----------------|-------------------|
+| Pregunta | ¿Qué fue? | ¿Dónde entró/salió? |
+| Ejemplo | Automotor › Combustible | Mercado Pago |
+| Quién elige | Vos al clasificar | Vos al elegir medio |
+| Ubicación contable FA | Automática por tipo (banco→Bancos, billetera→Billeteras, efectivo→Caja, tarjeta→Pasivo/Tarjetas) | |
 
 ## Ámbito / Origen
 
-- **Egresos:** Personal | Profesional | Mixto  
-- **Ingresos (nueva carga):** Profesional | Financiero (no Personal/Mixto)  
-- Históricos Ingreso+Personal: **no** convertir en silencio → dry-run
+**Egresos:** Personal · Profesional · Mixto  
+**Ingresos:** Profesional · Financiero  
 
-## Cuentas financieras → ubicación contable
+No hay “ingreso personal” en la carga normal. Mixto se acepta sin exigir reparto porcentual (el split queda para más adelante).
 
-Automático por tipo (sin mapeo por movimiento):
+## Cómo usar la pantalla
 
-| Tipo FA | Ubicación plan |
-|---------|----------------|
-| Efectivo | 1.1.1 Caja / Efectivo |
-| Banco | 1.1.2 Bancos |
-| Billetera | 1.1.3 Billeteras virtuales |
-| Tarjeta | 2.1 Tarjetas de crédito |
+1. Abrí **Plan de cuentas**.
+2. A la derecha ves la **radiografía** de las cinco raíces del período.
+3. Elegí período: Este mes / Mes anterior / Este año / Personalizado.
+4. Click en una cuenta del árbol (izquierda): el panel derecho muestra total, gráfico si es padre, y movimientos (Fecha · Descripción · Cuenta financiera · Ámbito · Importe).
+5. En el celular: navegación por niveles (raíz → grupo → hoja), no el árbol comprimido.
 
-## Compatibilidad
+Los totales de padres **incluyen** a sus subcuentas.
 
-Tablas `categories` / `subcategories` se mantienen en migración progresiva (dual-read/dual-write). La UX cotidiana usa el plan (Concepto). Menú bajo Plan: **Ver plan · Pendientes de clasificación (N si >0) · Asignación al plan · Reglas automáticas**.
+## Crear / mover / eliminar
 
-## Dry-run / Apply Fase 1
+- **Crear:** desde una cuenta → *+ Subcuenta*. El sistema sugiere el próximo código (ej. bajo 5.3 → 5.3.4).
+- **Editar / mover:** cambiar nombre, ayuda, código o padre compatible. No se permiten ciclos ni alterar las cinco raíces.
+- **Eliminar vacía:** confirmación y listo.
+- **Eliminar con movimientos:** reasignación obligatoria a otra cuenta. No existe “dejar sin clasificar”.
 
-```bash
-php artisan chart:dry-run-11f --json=exports/11f/dry-run.json
-# Solo infraestructura (árbol + link FA + remap masters; SIN movimientos):
-php artisan chart:dry-run-11f --infra
-# Apply autorizado Fase 1 (2B raíces legacy + FA + Bazar/MUBI + convergencia chart):
-php artisan chart:apply-11f --confirm=APPLY-11F-PHASE1 --json=exports/11f/apply-phase1.json
-```
+## Aprendizaje de clasificaciones
 
-**Apply masivo solo con aprobación explícita.** Tras Fase 1: **DETENERSE** (no Fase 2 / Etapa 12).
+Al cargar un egreso/ingreso con descripción + clasificación:
 
-### Addendum 2B — Bienes de uso
+1. Primera vez → el sistema pregunta *¿Recordar esta clasificación?*
+2. Si decís que sí, la próxima vez con el mismo texto **autocompleta** plan + ámbito (no la cuenta financiera).
+3. Textos parecidos (ej. “Piatto Rosso Devoto”) solo **sugieren**, no asumen certeza.
+4. Si cambiás una clasificación ya recordada → pregunta si actualizar la memoria o “solo esta vez”.
+5. *Dejar de recordar* desactiva esa memoria.
+6. Listado en Plan → Configuración avanzada → Clasificaciones recordadas.
 
-Raíces legacy (`Instrumentos musicales`, `Propiedades`, `Vehículos`) se reubican bajo `1.5 Bienes de uso` (sin duplicar; se preservan IDs/movimientos):
+La clasificación manual siempre gana: nunca se sobrescribe en silencio.
 
-`1.5.1 Equipamiento` · `1.5.2 Muebles y útiles` · `1.5.3 Instrumentos musicales` · `1.5.4 Propiedades` · `1.5.5 Vehículos` · `1.5.6 Otros bienes de uso`
+## Colores (rojo / verde)
 
-## Ayuda breve
+- **Rojo:** requiere atención (ej. cliente que nos debe, pasivo exigible).
+- **Verde:** favorable (ingreso, activo, saldo a favor).
+- **Neutro:** egresos cotidianos (un gasto normal no es alarma).
 
-- **Créditos:** dinero que terceros le deben al negocio (p. ej. saldos de clientes). Detalle operativo = maestro Clientes/CC; el plan agrega en 1.2.1.  
-- **Patrimonio Neto:** diferencia entre lo que el negocio posee y lo que debe (capital, aportes, resultados).
+En cuenta corriente de clientes: **nos deben = rojo**, **a favor = verde**.
 
-## Ejemplos A–H
+## Navegación
 
-### A. Compra combustible con Mercado Pago
-- Usuario: Egreso · Ámbito Profesional · Concepto Automotor › Combustible · FA Mercado Pago  
-- Plan: 5.3.1 · FA ubicación: 1.1.3 Billeteras · CC: no
+Uso diario: **Plan de cuentas** + **Cuentas financieras**.  
+Pendientes de clasificación solo aparecen como alerta si hay movimientos sin clasificar.  
+Asignación / reglas técnicas viven en **Configuración avanzada**, no en el menú principal.
 
-### B. Pago VISA desde Patagonia
-- Usuario: Transferencia Patagonia → VISA  
-- Plan económico del gasto ya quedó al consumir; este flujo mueve disponibilidad (1.1.2) vs pasivo tarjeta (2.1)  
-- No duplica egreso
+## Ejemplos
 
-### C. Venta equipo cobrada por Patagonia
-- Usuario: Ingreso · Origen Profesional · Concepto Ventas › Equipos · FA Patagonia · Cliente opcional  
-- Plan: 4.1.1 · FA: 1.1.2
+**Gasto:** 13/08/2026 · Profesional · Nafta Shell · Automotor › Combustible · $50.000 · Mercado Pago  
 
-### D. Venta a DAASA a cuenta corriente
-- Circuito comercial: cargo CC (aumenta crédito clientes) · **no** inventa caja  
-- Agregado contable: 1.2.1 Clientes (detalle en ficha DAASA)
+**Ingreso:** 13/08/2026 · Profesional · Abono DAASA · Servicios profesionales › Abonos · $500.000 · Banco Patagonia · Cliente DAASA  
 
-### E. Cobro posterior de DAASA
-- Cobro CC + FA · un solo ingreso financiero · aplica cargos  
-- Plan según concepto del cobro/ingreso; FA cambia; CC baja
-
-### F. Intereses acreditados por Mercado Pago
-- Ingreso · Origen Financiero · Concepto Ingresos financieros › Intereses · FA MP  
-- Plan: 4.3.1
-
-### G. Gasto personal de supermercado
-- Egreso · Personal · Alimentación › Supermercado · FA caja/billetera  
-- Plan: 5.1.1
-
-### H. Gasto mixto de Internet
-- Egreso · Mixto · Servicios › Internet · FA correspondiente  
-- Plan: 5.2.3 · ámbito Mixto analítico (sin cuenta duplicada)
-
-## Migración
-
-1. Auditar · 2. Seed raíces/árbol · 3. Nueva UX · 4. Dry-run · 5. Tests · 6. Deploy código  
-**Apply masivo de datos: solo con aprobación explícita del usuario.**
+El sistema comercial/CC hace lo que corresponda; no hace falta una segunda carga contable.

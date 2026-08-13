@@ -32,6 +32,10 @@ class ChartAccountAdminService
             throw new InvalidArgumentException('El tipo debe coincidir con la raíz/padre ('.$parent->typeLabel().').');
         }
 
+        if (empty($data['code'])) {
+            $data['code'] = $this->suggestNextCode($parent);
+        }
+
         $account = ChartAccount::query()->create([
             'code' => $data['code'],
             'name' => $data['name'],
@@ -47,6 +51,39 @@ class ChartAccountAdminService
         $this->audit->log('chart_account_created', $account, null, $account->toArray(), 'Cuenta contable creada');
 
         return $account;
+    }
+
+    /**
+     * Próximo código hijo bajo el padre (ej. 5.3 → 5.3.4).
+     */
+    public function suggestNextCode(ChartAccount $parent): string
+    {
+        $prefix = rtrim($parent->code, '.').'.';
+        $siblings = ChartAccount::query()
+            ->where('parent_id', $parent->id)
+            ->pluck('code');
+
+        $max = 0;
+        foreach ($siblings as $code) {
+            if (! str_starts_with((string) $code, $prefix)) {
+                continue;
+            }
+            $suffix = substr((string) $code, strlen($prefix));
+            if ($suffix === '' || str_contains($suffix, '.')) {
+                // Solo considerar hijos directos de un nivel (5.3.1, no 5.3.1.2 como sibling).
+                $first = explode('.', $suffix)[0];
+                if (ctype_digit($first)) {
+                    $max = max($max, (int) $first);
+                }
+
+                continue;
+            }
+            if (ctype_digit($suffix)) {
+                $max = max($max, (int) $suffix);
+            }
+        }
+
+        return $prefix.($max + 1);
     }
 
     /**
@@ -125,39 +162,58 @@ class ChartAccountAdminService
             return;
         }
 
+        $usage = $this->usage($account);
+        $hasMovements = ($usage['movements'] ?? 0) > 0;
+
+        // Con movimientos: reasignación obligatoria (nunca “dejar sin clasificar”).
+        if ($hasMovements && $disposition !== 'reassign') {
+            throw new InvalidArgumentException('Esta cuenta tiene movimientos. Debés reasignarlos a otra cuenta del plan.');
+        }
+
         $targetId = $disposition === 'reassign' ? (int) ($options['reassign_to'] ?? 0) : null;
+        if ($hasMovements && ! $targetId) {
+            throw new InvalidArgumentException('Elegí la cuenta de destino para reasignar los movimientos.');
+        }
         if ($disposition === 'reassign' && ! $targetId) {
             throw new InvalidArgumentException('Elegí la cuenta de destino para reasignar.');
         }
         if ($targetId && ($targetId === (int) $account->id || $this->isDescendant($account, $targetId))) {
             throw new InvalidArgumentException('Destino de reasignación inválido (ciclo).');
         }
+        // Vacía: permitir delete sin reassign (disposition=delete|unassign sin tocar movimientos).
+        if (! $hasMovements && $disposition === 'unassign') {
+            $disposition = 'delete';
+            $targetId = null;
+        }
 
         $childrenCount = $account->children()->count();
         $childrenAction = $options['children_action'] ?? 'reparent';
         if ($childrenCount > 0 && $childrenAction === 'block') {
-            throw new InvalidArgumentException('Esta cuenta tiene subcuentas. Decidí qué hacer con ellas.');
+            throw new InvalidArgumentException('Esta cuenta tiene subcuentas. Resolvé primero las hijas o reparentalas.');
         }
 
-        $usage = $this->usage($account);
         $snapshot = $account->toArray();
 
-        DB::transaction(function () use ($account, $targetId, $childrenCount, $usage, $snapshot) {
+        DB::transaction(function () use ($account, $targetId, $childrenCount, $usage, $snapshot, $hasMovements) {
             if ($childrenCount > 0) {
                 ChartAccount::query()
                     ->where('parent_id', $account->id)
                     ->update(['parent_id' => $targetId ?? $account->parent_id]);
             }
 
-            Category::query()->where('chart_account_id', $account->id)->update(['chart_account_id' => $targetId]);
-            Subcategory::query()->where('chart_account_id', $account->id)->update(['chart_account_id' => $targetId]);
-            Movement::query()->where('chart_account_id', $account->id)->update(['chart_account_id' => $targetId]);
-            FinancialAccount::query()->where('chart_account_id', $account->id)->update(['chart_account_id' => $targetId]);
+            if ($targetId) {
+                Category::query()->where('chart_account_id', $account->id)->update(['chart_account_id' => $targetId]);
+                Subcategory::query()->where('chart_account_id', $account->id)->update(['chart_account_id' => $targetId]);
+                Movement::query()->where('chart_account_id', $account->id)->update(['chart_account_id' => $targetId]);
+                FinancialAccount::query()->where('chart_account_id', $account->id)->update(['chart_account_id' => $targetId]);
+            } elseif ($hasMovements) {
+                throw new InvalidArgumentException('No se pueden dejar movimientos sin clasificar.');
+            }
 
             $account->delete();
 
             $this->audit->log('chart_account_deleted', null, $snapshot, [
-                'disposition' => $targetId ? 'reassign' : 'unassign',
+                'disposition' => $targetId ? 'reassign' : 'delete_empty',
                 'reassign_to' => $targetId,
                 'children_reparented' => $childrenCount,
                 'usage' => $usage,

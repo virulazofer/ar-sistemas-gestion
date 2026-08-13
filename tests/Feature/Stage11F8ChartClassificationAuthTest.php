@@ -327,7 +327,7 @@ test('21 plan de cuentas traducido', function () {
     ChartAccount::query()->firstOrCreate(['code' => '4'], ['name' => 'INGRESOS', 'type' => ChartAccountType::Income, 'is_active' => true, 'is_protected' => true, 'sort_order' => 40]);
     $html = $this->get(route('chart-accounts.index'))->assertOk()->getContent();
     expect($html)->toContain('INGRESOS')
-        ->and($html)->toContain('Cuenta contable')
+        ->and($html)->toContain('Radiografía')
         ->and($html)->not->toContain('Defaults por tipo');
 });
 

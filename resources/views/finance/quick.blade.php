@@ -26,6 +26,41 @@
         ])->values();
     @endphp
 
+    @if (session('remember_prompt'))
+        @php $rp = session('remember_prompt'); @endphp
+        <div class="ar-card mx-auto max-w-2xl mb-4 p-4 text-sm" style="border-color: var(--ar-accent, #2563eb);">
+            @if (($rp['mode'] ?? '') === 'update')
+                <p class="font-medium">¿Actualizar también la clasificación recordada para «{{ $rp['description'] }}»?</p>
+                <p class="ar-muted mt-1">Nueva: {{ $rp['path'] ?? '—' }} / {{ config('finance.scopes.'.$rp['scope'], $rp['scope']) }}</p>
+                <div class="mt-3 flex flex-wrap gap-2">
+                    <form method="POST" action="{{ route('remembered-classifications.store') }}">
+                        @csrf
+                        <input type="hidden" name="description" value="{{ $rp['description'] }}">
+                        <input type="hidden" name="type" value="{{ $rp['type'] }}">
+                        <input type="hidden" name="chart_account_id" value="{{ $rp['chart_account_id'] }}">
+                        <input type="hidden" name="scope" value="{{ $rp['scope'] }}">
+                        <button class="ar-btn ar-btn-primary text-xs">Actualizar</button>
+                    </form>
+                    <a href="{{ route('movements.quick') }}" class="ar-btn ar-btn-secondary text-xs">Solo esta vez</a>
+                </div>
+            @else
+                <p class="font-medium">¿Recordar esta clasificación para «{{ $rp['description'] }}»?</p>
+                <p class="ar-muted mt-1">{{ $rp['path'] ?? '—' }} · {{ config('finance.scopes.'.$rp['scope'], $rp['scope']) }}</p>
+                <div class="mt-3 flex flex-wrap gap-2">
+                    <form method="POST" action="{{ route('remembered-classifications.store') }}">
+                        @csrf
+                        <input type="hidden" name="description" value="{{ $rp['description'] }}">
+                        <input type="hidden" name="type" value="{{ $rp['type'] }}">
+                        <input type="hidden" name="chart_account_id" value="{{ $rp['chart_account_id'] }}">
+                        <input type="hidden" name="scope" value="{{ $rp['scope'] }}">
+                        <button class="ar-btn ar-btn-primary text-xs">Sí</button>
+                    </form>
+                    <a href="{{ route('movements.quick') }}" class="ar-btn ar-btn-secondary text-xs">No</a>
+                </div>
+            @endif
+        </div>
+    @endif
+
     <div
         class="ar-card mx-auto max-w-2xl p-5"
         x-data="{
@@ -33,10 +68,15 @@
             scope: '{{ old('scope', 'personal') }}',
             chartAccountId: '{{ old('chart_account_id') }}',
             conceptQuery: '',
+            description: '{{ old('description') }}',
             accountId: '{{ old('financial_account_id') }}',
             applyToCc: {{ old('apply_to_cc', $decision['apply_to_cc'] ?? false) ? 'true' : 'false' }},
             accounts: {{ Js::from($accountsPayload) }},
             concepts: {{ Js::from($conceptsPayload) }},
+            memoryMatch: null,
+            memoryPath: null,
+            memoryId: null,
+            lookupTimer: null,
             get scopeOptions() {
                 if (this.type === 'income') {
                     return [
@@ -85,15 +125,59 @@
                 }
                 this.chartAccountId = ''
                 this.conceptQuery = ''
+                this.memoryMatch = null
+                this.lookupMemory()
             },
             onConceptChange() {
                 const c = this.selectedConcept
-                if (c && c.suggested_scope) {
+                if (c && c.suggested_scope && !this.memoryMatch) {
                     const allowed = this.scopeOptions.map(o => o.value)
                     if (allowed.includes(c.suggested_scope)) {
                         this.scope = c.suggested_scope
                     }
                 }
+            },
+            async lookupMemory() {
+                if (this.type === 'transfer' || !(this.description || '').trim()) {
+                    this.memoryMatch = null
+                    return
+                }
+                try {
+                    const url = @js(route('remembered-classifications.lookup')) + '?description=' + encodeURIComponent(this.description) + '&type=' + encodeURIComponent(this.type)
+                    const r = await fetch(url, { headers: { 'Accept': 'application/json' } })
+                    const j = await r.json()
+                    this.memoryMatch = j.match || null
+                    this.memoryPath = j.path || null
+                    this.memoryId = j.memory_id || null
+                    if (j.match === 'exact' && j.chart_account_id) {
+                        this.chartAccountId = String(j.chart_account_id)
+                        if (j.scope) {
+                            const allowed = this.scopeOptions.map(o => o.value)
+                            if (allowed.includes(j.scope)) this.scope = j.scope
+                        }
+                    }
+                } catch (e) {
+                    this.memoryMatch = null
+                }
+            },
+            onDescriptionInput() {
+                clearTimeout(this.lookupTimer)
+                this.lookupTimer = setTimeout(() => this.lookupMemory(), 350)
+            },
+            async forgetMemory() {
+                if (!this.description) return
+                await fetch(@js(route('remembered-classifications.forget')), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content || ''
+                    },
+                    body: JSON.stringify({ description: this.description, type: this.type })
+                })
+                this.memoryMatch = null
+                this.memoryPath = null
+                this.memoryId = null
             }
         }"
         x-init="onTypeChange()"
@@ -164,13 +248,13 @@
 
             <div>
                 <label class="ar-label" for="description">Descripción</label>
-                <input id="description" type="text" name="description" class="ar-input" value="{{ old('description') }}" placeholder="Ej. Nafta Shell / Abono DAASA">
+                <input id="description" type="text" name="description" class="ar-input" x-model="description" @input="onDescriptionInput()" placeholder="Ej. Nafta Shell / Abono DAASA">
             </div>
 
             <div x-show="type !== 'transfer'" class="space-y-4">
                 <div>
-                    <label class="ar-label" for="concept_q">Concepto (plan de cuentas)</label>
-                    <input id="concept_q" type="search" class="ar-input mb-2" placeholder="Buscar: comb, susc, abono…" x-model="conceptQuery">
+                    <label class="ar-label" for="concept_q">Clasificación</label>
+                    <input id="concept_q" type="search" class="ar-input mb-2" placeholder="Buscar: Automotor › Combustible…" x-model="conceptQuery">
                     <select id="chart_account_id" name="chart_account_id" class="ar-input" x-model="chartAccountId" @change="onConceptChange()">
                         <option value="">—</option>
                         <template x-for="c in filteredConcepts" :key="c.id">
@@ -178,7 +262,24 @@
                         </template>
                     </select>
                     <p class="ar-muted mt-1 text-xs" x-show="selectedConcept" x-text="selectedConcept?.path"></p>
+                    <div x-show="memoryMatch === 'exact'" class="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                        <span class="rounded px-2 py-0.5" style="background: var(--ar-surface-2, #f3f4f6);">Recordada (exacta)</span>
+                        <button type="button" class="underline" @click="forgetMemory()">Dejar de recordar</button>
+                    </div>
+                    <div x-show="memoryMatch === 'probable'" class="mt-2 text-xs rounded border p-2" style="border-color: var(--ar-border);">
+                        <span class="font-medium">Sugerido:</span>
+                        <span x-text="memoryPath"></span>
+                        <span class="ar-muted"> · confirmá o cambiá (no se aplica sola)</span>
+                        <button type="button" class="underline ml-2" @click="
+                            lookupMemory().then(() => {});
+                            fetch(@js(route('remembered-classifications.lookup')) + '?description=' + encodeURIComponent(description) + '&type=' + type)
+                              .then(r => r.json()).then(j => {
+                                if (j.chart_account_id) { chartAccountId = String(j.chart_account_id); if (j.scope) scope = j.scope }
+                              })
+                        ">Usar sugerencia</button>
+                    </div>
                 </div>
+                <input type="hidden" name="remember_action" value="ask">
 
                 <div>
                     <label class="ar-label" for="amount">Importe</label>

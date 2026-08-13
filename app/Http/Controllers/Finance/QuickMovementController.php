@@ -13,6 +13,7 @@ use App\Models\FinancialAccount;
 use App\Services\Commercial\ReceiptService;
 use App\Services\Finance\ExchangeRateService;
 use App\Services\Finance\MovementService;
+use App\Services\Finance\RememberedClassificationService;
 use App\Services\Finance\ScopeOriginRules;
 use App\Support\Money;
 use Illuminate\Http\RedirectResponse;
@@ -35,6 +36,7 @@ class QuickMovementController extends Controller
         private readonly ExchangeRateService $rates,
         private readonly ReceiptService $receipts,
         private readonly ScopeOriginRules $scopeRules,
+        private readonly RememberedClassificationService $remembered,
     ) {}
 
     public function create(Request $request): View
@@ -153,6 +155,9 @@ class QuickMovementController extends Controller
             'missing_charge.charged_on' => ['nullable', 'date'],
             'missing_charge.scope' => ['nullable', Rule::in(['professional', 'personal'])],
             'missing_charge.documental_status' => ['nullable', Rule::enum(DocumentalStatus::class)],
+            'remember_action' => ['nullable', Rule::in(['ask', 'yes', 'no', 'update', 'once', 'forget'])],
+            'memory_id' => ['nullable', 'integer', 'exists:remembered_classifications,id'],
+            'applied_from_memory' => ['nullable', 'boolean'],
         ]);
 
         try {
@@ -228,13 +233,14 @@ class QuickMovementController extends Controller
             );
         }
 
-        return $this->storeSimpleIncome($data, $account, confirmIncomeOnly: false);
+        return $this->storeSimpleIncome($data, $account, confirmIncomeOnly: false, rememberMeta: $data);
     }
 
     /**
      * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>  $rememberMeta
      */
-    private function storeSimpleIncome(array $data, FinancialAccount $account, bool $confirmIncomeOnly): RedirectResponse
+    private function storeSimpleIncome(array $data, FinancialAccount $account, bool $confirmIncomeOnly, array $rememberMeta = []): RedirectResponse
     {
         try {
             $movement = $this->movements->createSimple([
@@ -253,6 +259,8 @@ class QuickMovementController extends Controller
             return back()->withInput()->withErrors(['amount' => $e->getMessage()]);
         }
 
+        $rememberPrompt = $this->handleRememberAfterSave($data, $rememberMeta);
+
         $isIncome = $data['type'] === 'income';
         $isLiability = $account->is_liability || $account->type?->value === 'credit_card';
         if ($isIncome) {
@@ -263,7 +271,7 @@ class QuickMovementController extends Controller
 
         $suffix = $confirmIncomeOnly ? ' · ingreso solo (sin inventar deuda CC)' : '';
 
-        return redirect()->route('movements.quick')->with(
+        $redirect = redirect()->route('movements.quick')->with(
             'status',
             sprintf(
                 '%s · %s: %s · %s %s%s',
@@ -275,5 +283,72 @@ class QuickMovementController extends Controller
                 $suffix
             )
         );
+
+        if ($rememberPrompt) {
+            $redirect->with('remember_prompt', $rememberPrompt);
+        }
+
+        return $redirect;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>  $meta
+     * @return array<string, mixed>|null
+     */
+    private function handleRememberAfterSave(array $data, array $meta): ?array
+    {
+        $type = (string) ($data['type'] ?? '');
+        if (! in_array($type, ['income', 'expense'], true)) {
+            return null;
+        }
+        $description = trim((string) ($data['description'] ?? ''));
+        $chartId = isset($data['chart_account_id']) ? (int) $data['chart_account_id'] : 0;
+        if ($description === '' || $chartId <= 0) {
+            return null;
+        }
+
+        $action = (string) ($meta['remember_action'] ?? $data['remember_action'] ?? 'ask');
+        $scope = $data['scope'] ?? null;
+
+        if ($action === 'yes' || $action === 'update') {
+            $this->remembered->remember($description, $type, $chartId, $scope);
+
+            return null;
+        }
+        if ($action === 'forget') {
+            $this->remembered->forgetByDescription($description, $type);
+
+            return null;
+        }
+        if (in_array($action, ['no', 'once'], true)) {
+            return null;
+        }
+
+        // ask: primera vez o corrección de memoria exacta (probable no bloquea aprender el nuevo texto)
+        $hit = $this->remembered->lookup($description, $type, touch: false);
+        $base = [
+            'description' => $description,
+            'type' => $type,
+            'chart_account_id' => $chartId,
+            'scope' => $scope,
+            'path' => ChartAccount::query()->find($chartId)?->pathLabel(),
+        ];
+
+        if (! $hit || $hit['match'] === RememberedClassificationService::MATCH_PROBABLE) {
+            return array_merge($base, ['mode' => 'first']);
+        }
+
+        $same = (int) $hit['suggested_chart_account_id'] === $chartId
+            && (string) ($hit['suggested_scope'] ?? '') === (string) ($scope ?? '');
+
+        if (! $same) {
+            return array_merge($base, [
+                'mode' => 'update',
+                'memory_id' => $hit['memory']->id,
+            ]);
+        }
+
+        return null;
     }
 }

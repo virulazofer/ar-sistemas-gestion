@@ -73,18 +73,20 @@ test('§10.1 pendientes empty state y badge solo con N>0', function () {
         ->assertDontSee('Mapeo patrimonial');
 
     $nav = $this->get(route('chart-accounts.index'))->assertOk()->getContent();
-    expect($nav)->toContain('Pendientes de clasificación')
-        ->and($nav)->toContain('Ver plan')
-        ->and($nav)->toContain('Asignación al plan')
-        ->and($nav)->toContain('Reglas automáticas')
+    expect($nav)->toContain('Plan de cuentas')
+        ->and($nav)->toContain('Cuentas financieras')
+        ->and($nav)->toContain('Radiografía')
+        ->and($nav)->not->toContain('Asignación al plan')
+        ->and($nav)->not->toContain('Reglas automáticas')
         ->and($nav)->not->toContain('Dry-run 11F-8');
 
-    // Sin pendientes: no badge numérico al lado del ítem en sidebar (solo el label).
-    expect($nav)->not->toMatch('/Pendientes de clasificación\s*\(\d+\)/');
+    // Sin pendientes: no alerta contextual en nav principal.
+    expect($nav)->not->toMatch('/\d+\s+pendientes de clasificación/i')
+        ->and($nav)->not->toMatch('/Pendientes de clasificación\s*\(\d+\)/');
 
     postPhase1Movement(['description' => 'Nuevo pendiente']);
     $withBadge = $this->get(route('chart-accounts.index'))->assertOk()->getContent();
-    expect($withBadge)->toContain('Pendientes de clasificación (1)');
+    expect($withBadge)->toMatch('/1\s+movimientos necesitan clasificación|1\s+pendientes de clasificación/i');
 });
 
 test('§10.2 cat con plan null no aparece en pendientes', function () {
@@ -259,9 +261,10 @@ test('§10.7 navegación sin dry-run ni nombres internos', function () {
     $this->actingAs($admin);
 
     $html = $this->get(route('dashboard'))->assertOk()->getContent();
-    expect($html)->toContain('Pendientes de clasificación')
-        ->and($html)->toContain('Asignación al plan')
-        ->and($html)->toContain('Reglas automáticas')
+    expect($html)->toContain('Plan de cuentas')
+        ->and($html)->toContain('Cuentas financieras')
+        ->and($html)->not->toContain('Asignación al plan')
+        ->and($html)->not->toContain('Reglas automáticas')
         ->and($html)->not->toContain('Dry-run 11F-8')
         ->and($html)->not->toContain('Mapeo patrimonial')
         ->and($html)->not->toContain('Clasificar movimientos')

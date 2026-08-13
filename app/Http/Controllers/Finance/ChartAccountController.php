@@ -3,15 +3,14 @@
 namespace App\Http\Controllers\Finance;
 
 use App\Enums\ChartAccountType;
-use App\Enums\MovementStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\ChartAccount;
-use App\Models\FinancialAccount;
-use App\Models\Movement;
 use App\Models\Subcategory;
 use App\Services\Finance\ChartAccountAdminService;
 use App\Services\Finance\ChartAccountMappingService;
+use App\Services\Finance\ChartAccountPeriod;
+use App\Services\Finance\ChartAccountWorkspaceService;
 use App\Services\Finance\ScopeOriginRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -24,44 +23,86 @@ class ChartAccountController extends Controller
     public function __construct(
         private readonly ChartAccountAdminService $admin,
         private readonly ChartAccountMappingService $mapping,
+        private readonly ChartAccountWorkspaceService $workspace,
         private readonly ScopeOriginRules $scopes,
     ) {}
 
     public function index(Request $request): View
     {
-        $dateFrom = $request->string('from')->toString() ?: null;
-        $dateTo = $request->string('to')->toString() ?: null;
+        $period = ChartAccountPeriod::resolve(
+            $request->string('period')->toString() ?: null,
+            $request->string('from')->toString() ?: null,
+            $request->string('to')->toString() ?: null,
+        );
         $scope = $request->string('scope')->toString() ?: null;
         $selectedId = $request->integer('account') ?: null;
+        $sortDir = $request->string('sort')->toString() === 'asc' ? 'asc' : 'desc';
+        $qMov = $request->string('q_mov')->toString() ?: null;
+        $treeQ = $request->string('q')->toString() ?: null;
+        $mobileParent = $request->integer('nav') ?: null;
 
-        $roots = ChartAccount::query()
-            ->with(['children' => fn ($q) => $q->orderBy('sort_order')->orderBy('code')
-                ->with(['children' => fn ($q2) => $q2->orderBy('sort_order')->orderBy('code')
-                    ->with(['children' => fn ($q3) => $q3->orderBy('sort_order')->orderBy('code')])])])
-            ->roots()
-            ->where('is_active', true)
-            ->get();
+        $tree = $this->workspace->treeWithTotals($period['from'], $period['to'], $scope);
+        $roots = $tree['roots'];
+        $radiography = $this->workspace->radiography($roots);
 
         $selected = $selectedId
             ? ChartAccount::query()->with('children')->find($selectedId)
-            : $roots->first();
+            : null;
 
-        $detail = $selected ? $this->detailPayload($selected, $dateFrom, $dateTo, $scope) : null;
-        $unassignedMovements = $this->mapping->countMovementsWithoutAccount();
-        $progress = $this->mapping->classificationProgress();
-        $flatParents = ChartAccount::query()->orderBy('code')->get(['id', 'code', 'name', 'type']);
+        $detail = $selected
+            ? $this->workspace->detailPayload($selected, $period['from'], $period['to'], $scope, $sortDir, $qMov)
+            : null;
 
-        return view('finance.chart_accounts.index', compact(
-            'roots',
-            'selected',
-            'detail',
-            'unassignedMovements',
-            'progress',
-            'dateFrom',
-            'dateTo',
-            'scope',
-            'flatParents',
-        ));
+        $pending = $this->mapping->classificationProgress()['pending'] ?? 0;
+
+        $navNode = null;
+        $navChildren = $roots;
+        $navTrail = [];
+        if ($mobileParent) {
+            $navNode = ChartAccount::query()->find($mobileParent);
+            if ($navNode) {
+                $found = $this->findTreeNode($roots, (int) $navNode->id);
+                $navChildren = $found['children'] ?? [];
+                $navTrail = $navNode->ancestorsAndSelf()->all();
+            }
+        }
+
+        return view('finance.chart_accounts.index', [
+            'roots' => $roots,
+            'radiography' => $radiography,
+            'selected' => $selected,
+            'detail' => $detail,
+            'period' => $period,
+            'periodOptions' => ChartAccountPeriod::options(),
+            'scope' => $scope,
+            'sortDir' => $sortDir,
+            'qMov' => $qMov,
+            'treeQ' => $treeQ,
+            'pending' => $pending,
+            'navNode' => $navNode,
+            'navChildren' => $navChildren,
+            'navTrail' => $navTrail,
+            'totalsById' => $tree['by_id'],
+        ]);
+    }
+
+    /**
+     * @param  list<array<string,mixed>>  $nodes
+     * @return array<string,mixed>|null
+     */
+    private function findTreeNode(array $nodes, int $id): ?array
+    {
+        foreach ($nodes as $n) {
+            if ((int) $n['id'] === $id) {
+                return $n;
+            }
+            $found = $this->findTreeNode($n['children'] ?? [], $id);
+            if ($found) {
+                return $found;
+            }
+        }
+
+        return null;
     }
 
     public function search(Request $request): JsonResponse
@@ -82,6 +123,17 @@ class ChartAccountController extends Controller
         ]);
     }
 
+    public function suggestCode(Request $request): JsonResponse
+    {
+        $parent = ChartAccount::query()->findOrFail($request->integer('parent_id'));
+
+        return response()->json([
+            'code' => $this->admin->suggestNextCode($parent),
+            'parent_path' => $parent->pathLabel(),
+            'type' => $parent->type instanceof \BackedEnum ? $parent->type->value : (string) $parent->type,
+        ]);
+    }
+
     public function suggestScope(Request $request): JsonResponse
     {
         $account = ChartAccount::query()->find($request->integer('chart_account_id'));
@@ -97,9 +149,15 @@ class ChartAccountController extends Controller
         return redirect()->route('chart-accounts.index')->with('status', 'El mapa quedó integrado en Plan de cuentas.');
     }
 
+    public function advanced(): View
+    {
+        $pending = $this->mapping->classificationProgress()['pending'] ?? 0;
+
+        return view('finance.chart_accounts.advanced', compact('pending'));
+    }
+
     public function mappingTool(): View
     {
-        // Pantalla de compatibilidad (fuera del menú simplificado).
         $categories = Category::query()
             ->with(['subcategories', 'chartAccount'])
             ->orderBy('scope')
@@ -147,13 +205,13 @@ class ChartAccountController extends Controller
             $this->mapping->mapSubcategory($sub, $chartId);
         }
 
-        return back()->with('status', 'Asignación al plan de cuentas guardada.');
+        return back()->with('status', 'Vinculación contable guardada.');
     }
 
     public function saveTypeDefaults(Request $request): RedirectResponse
     {
-        return redirect()->route('imputation-rules.index')
-            ->with('status', 'Usá Reglas de clasificación automática (los defaults por tipo quedaron deprecados en UX).');
+        return redirect()->route('remembered-classifications.index')
+            ->with('status', 'Usá Clasificaciones recordadas (los defaults por tipo quedaron deprecados en UX).');
     }
 
     public function previewApply(Request $request): RedirectResponse
@@ -182,7 +240,7 @@ class ChartAccountController extends Controller
         return redirect()
             ->route('chart-accounts.mapping')
             ->with('status', sprintf(
-                'Asignación aplicada: %d actualizados, %d sin cambio (%d manuales preservados).',
+                'Vinculación aplicada: %d actualizados, %d sin cambio (%d manuales preservados).',
                 $result['updated'],
                 $result['skipped'],
                 $result['manual_skipped'],
@@ -191,10 +249,16 @@ class ChartAccountController extends Controller
 
     public function create(Request $request): View
     {
+        $parentId = $request->integer('parent_id') ?: null;
+        $parent = $parentId ? ChartAccount::query()->find($parentId) : null;
+        $suggestedCode = $parent ? $this->admin->suggestNextCode($parent) : '';
+
         return view('finance.chart_accounts.create', [
             'types' => ChartAccountType::structuralRoots(),
             'parents' => ChartAccount::query()->orderBy('code')->get(),
-            'parentId' => $request->integer('parent_id') ?: null,
+            'parentId' => $parentId,
+            'suggestedCode' => $suggestedCode,
+            'parentType' => $parent?->type instanceof \BackedEnum ? $parent->type->value : ($parent?->type),
             'returnTo' => $request->string('return')->toString() ?: null,
         ]);
     }
@@ -246,8 +310,11 @@ class ChartAccountController extends Controller
 
     public function destroy(Request $request, ChartAccount $chart_account): RedirectResponse
     {
+        $usage = $this->admin->usage($chart_account);
+        $hasMovements = ($usage['movements'] ?? 0) > 0;
+
         $data = $request->validate([
-            'disposition' => ['required', Rule::in(['reassign', 'unassign', 'cancel'])],
+            'disposition' => ['required', Rule::in($hasMovements ? ['reassign', 'cancel'] : ['reassign', 'delete', 'unassign', 'cancel'])],
             'reassign_to' => [
                 'nullable',
                 'integer',
@@ -267,56 +334,6 @@ class ChartAccountController extends Controller
         }
 
         return redirect()->route('chart-accounts.index')->with('status', 'Cuenta eliminada.');
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function detailPayload(ChartAccount $account, ?string $from, ?string $to, ?string $scope): array
-    {
-        $ids = $account->selfAndDescendantIds();
-        $q = Movement::query()
-            ->where('status', MovementStatus::Posted->value)
-            ->whereIn('chart_account_id', $ids)
-            ->when($from, fn ($qq) => $qq->whereDate('movement_date', '>=', $from))
-            ->when($to, fn ($qq) => $qq->whereDate('movement_date', '<=', $to))
-            ->when($scope, fn ($qq) => $qq->where('scope', $scope));
-
-        $count = (clone $q)->count();
-        $totalArs = (clone $q)->sum('amount_ars');
-
-        $byScope = Movement::query()
-            ->where('status', MovementStatus::Posted->value)
-            ->whereIn('chart_account_id', $ids)
-            ->when($from, fn ($qq) => $qq->whereDate('movement_date', '>=', $from))
-            ->when($to, fn ($qq) => $qq->whereDate('movement_date', '<=', $to))
-            ->selectRaw('scope, COUNT(*) as c, COALESCE(SUM(amount_ars),0) as total')
-            ->groupBy('scope')
-            ->get()
-            ->mapWithKeys(fn ($r) => [
-                (string) ($r->scope instanceof \BackedEnum ? $r->scope->value : $r->scope) => [
-                    'count' => (int) $r->c,
-                    'total_ars' => (string) $r->total,
-                ],
-            ])
-            ->all();
-
-        $movements = (clone $q)->with(['account', 'category', 'subcategory'])
-            ->latest('movement_date')
-            ->latest('id')
-            ->limit(50)
-            ->get();
-
-        return [
-            'usage' => $this->admin->usage($account),
-            'path' => $account->pathLabel(),
-            'count' => $count,
-            'total_ars' => $totalArs,
-            'by_scope' => $byScope,
-            'movements' => $movements,
-            'children' => $account->children,
-            'financial_accounts' => FinancialAccount::query()->where('chart_account_id', $account->id)->orderBy('name')->get(),
-        ];
     }
 
     private function validated(Request $request, ?int $ignoreId = null): array

@@ -32,6 +32,7 @@ use App\Http\Controllers\Finance\FinancialAccountController;
 use App\Http\Controllers\Finance\ImputationRuleController;
 use App\Http\Controllers\Finance\MovementController;
 use App\Http\Controllers\Finance\QuickMovementController;
+use App\Http\Controllers\Finance\RememberedClassificationController;
 use App\Http\Controllers\Finance\UnclassifiedMovementController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RolePermissionController;
@@ -495,8 +496,12 @@ Route::middleware(['auth'])->group(function () {
     Route::middleware('permission:categories.view')->group(function () {
         Route::get('/plan-de-cuentas', [ChartAccountController::class, 'index'])->name('chart-accounts.index');
         Route::get('/plan-de-cuentas/buscar', [ChartAccountController::class, 'search'])->name('chart-accounts.search');
+        Route::get('/plan-de-cuentas/sugerir-codigo', [ChartAccountController::class, 'suggestCode'])->name('chart-accounts.suggest-code');
         Route::get('/plan-de-cuentas/sugerir-ambito', [ChartAccountController::class, 'suggestScope'])->name('chart-accounts.suggest-scope');
         Route::get('/plan-de-cuentas/mapa', [ChartAccountController::class, 'map'])->name('chart-accounts.map');
+        Route::get('/plan-de-cuentas/configuracion-avanzada', [ChartAccountController::class, 'advanced'])->name('chart-accounts.advanced');
+        Route::get('/plan-de-cuentas/clasificaciones-recordadas', [RememberedClassificationController::class, 'index'])->name('remembered-classifications.index');
+        Route::get('/plan-de-cuentas/clasificaciones-recordadas/lookup', [RememberedClassificationController::class, 'lookup'])->name('remembered-classifications.lookup');
         Route::get('/plan-de-cuentas/mapeo', [ChartAccountController::class, 'mappingTool'])->name('chart-accounts.mapping');
         Route::get('/plan-de-cuentas/movimientos-sin-clasificar', [UnclassifiedMovementController::class, 'index'])->name('chart-accounts.unclassified');
         Route::get('/plan-de-cuentas/clasificar-movimientos', [UnclassifiedMovementController::class, 'index'])->name('chart-accounts.classify');
@@ -532,6 +537,12 @@ Route::middleware(['auth'])->group(function () {
         Route::delete('/plan-de-cuentas/reglas-imputacion/{imputation_rule}', [ImputationRuleController::class, 'destroy'])->name('imputation-rules.destroy');
         Route::post('/plan-de-cuentas/reglas-imputacion/{imputation_rule}/preview', [ImputationRuleController::class, 'preview'])->name('imputation-rules.preview');
         Route::post('/plan-de-cuentas/reglas-imputacion/{imputation_rule}/aplicar', [ImputationRuleController::class, 'apply'])->name('imputation-rules.apply');
+
+        Route::post('/plan-de-cuentas/clasificaciones-recordadas', [RememberedClassificationController::class, 'store'])->name('remembered-classifications.store');
+        Route::put('/plan-de-cuentas/clasificaciones-recordadas/{remembered_classification}', [RememberedClassificationController::class, 'update'])->name('remembered-classifications.update');
+        Route::post('/plan-de-cuentas/clasificaciones-recordadas/{remembered_classification}/desactivar', [RememberedClassificationController::class, 'deactivate'])->name('remembered-classifications.deactivate');
+        Route::delete('/plan-de-cuentas/clasificaciones-recordadas/{remembered_classification}', [RememberedClassificationController::class, 'destroy'])->name('remembered-classifications.destroy');
+        Route::post('/plan-de-cuentas/clasificaciones-recordadas/olvidar', [RememberedClassificationController::class, 'forget'])->name('remembered-classifications.forget');
     });
 
     Route::middleware('permission:users.create')->group(function () {

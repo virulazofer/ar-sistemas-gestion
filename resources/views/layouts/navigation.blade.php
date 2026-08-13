@@ -58,27 +58,16 @@
                         } catch (\Throwable) { $pendingClassify = 0; }
                     @endphp
                     @can('categories.view')
-                        <div class="ar-side-nested">
-                            <p class="ar-side-nested-title"><span class="ar-side-label">Plan de cuentas</span></p>
-                            <a href="{{ route('chart-accounts.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('chart-accounts.index') || request()->routeIs('chart-accounts.create') || request()->routeIs('chart-accounts.edit') || request()->routeIs('categories.*') || request()->routeIs('subcategories.*') ? 'is-active' : '' }}">
-                                <span class="ar-side-label">Ver plan</span>
-                            </a>
+                        <a href="{{ route('chart-accounts.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('chart-accounts.*') || request()->routeIs('remembered-classifications.*') || request()->routeIs('imputation-rules.*') ? 'is-active' : '' }}">
+                            <span class="ar-side-label">Plan de cuentas</span>
+                        </a>
+                        @if ($pendingClassify > 0)
                             <a href="{{ route('chart-accounts.classify') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('chart-accounts.classify') || request()->routeIs('chart-accounts.unclassified') ? 'is-active' : '' }}">
-                                <span class="ar-side-label">
-                                    @if ($pendingClassify > 0)
-                                        Pendientes de clasificación <span class="ar-muted">({{ $pendingClassify }})</span>
-                                    @else
-                                        Pendientes de clasificación
-                                    @endif
+                                <span class="ar-side-label" style="color: var(--ar-danger);">
+                                    {{ $pendingClassify }} pendientes de clasificación
                                 </span>
                             </a>
-                            <a href="{{ route('chart-accounts.mapping') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('chart-accounts.mapping') ? 'is-active' : '' }}">
-                                <span class="ar-side-label">Asignación al plan</span>
-                            </a>
-                            <a href="{{ route('imputation-rules.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('imputation-rules.*') ? 'is-active' : '' }}">
-                                <span class="ar-side-label">Reglas automáticas</span>
-                            </a>
-                        </div>
+                        @endif
                     @endcan
                 </div>
             </div>
