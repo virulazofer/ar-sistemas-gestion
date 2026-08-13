@@ -8,7 +8,7 @@ use App\Models\FinancialAccount;
 
 /**
  * Vincula cada cuenta financiera a su ubicación en el plan (Activo/Pasivo).
- * No se pide mapeo por movimiento.
+ * FA es el maestro único; el plan solo refleja por tipo (sin nodos duplicados por FA).
  */
 class FinancialAccountChartLinker
 {
@@ -18,20 +18,47 @@ class FinancialAccountChartLinker
             ? $account->type->value
             : (string) $account->type;
 
-        if ($account->is_liability || $type === AccountType::CreditCard->value) {
-            return (string) config('finance.financial_account_chart_codes.credit_card', '2.1');
-        }
+        return match ($type) {
+            AccountType::Cash->value => (string) config('finance.financial_account_chart_codes.cash', '1.1.1'),
+            AccountType::Bank->value => (string) config('finance.financial_account_chart_codes.bank', '1.1.2'),
+            AccountType::Wallet->value => (string) config('finance.financial_account_chart_codes.wallet', '1.1.3'),
+            AccountType::CreditCard->value => (string) config('finance.financial_account_chart_codes.credit_card', '2.1'),
+            default => null,
+        };
+    }
 
-        return config('finance.financial_account_chart_codes.'.$type)
-            ?? config('finance.financial_account_chart_codes.other');
+    public function accountTypeForCode(string $code): ?AccountType
+    {
+        return match ($code) {
+            '1.1.1' => AccountType::Cash,
+            '1.1.2' => AccountType::Bank,
+            '1.1.3' => AccountType::Wallet,
+            '2.1' => AccountType::CreditCard,
+            default => null,
+        };
+    }
+
+    /**
+     * @return list<string>|null  null = no es hoja de disponibilidades tipada
+     */
+    public function accountTypesForCode(string $code): ?array
+    {
+        return match (true) {
+            $code === '1.1.1' => [AccountType::Cash->value],
+            $code === '1.1.2' => [AccountType::Bank->value],
+            $code === '1.1.3' => [AccountType::Wallet->value],
+            $code === '2.1' => [AccountType::CreditCard->value],
+            $code === '1.1' => [
+                AccountType::Cash->value,
+                AccountType::Bank->value,
+                AccountType::Wallet->value,
+            ],
+            default => null,
+        };
     }
 
     public function resolveLocation(FinancialAccount $account): ?ChartAccount
     {
-        if ($account->chart_account_id) {
-            return $account->chartAccount ?? ChartAccount::query()->find($account->chart_account_id);
-        }
-
         $code = $this->locationCodeFor($account);
         if (! $code) {
             return null;
@@ -42,17 +69,26 @@ class FinancialAccountChartLinker
 
     public function link(FinancialAccount $account, bool $force = false): FinancialAccount
     {
+        $location = $this->resolveLocation($account);
+        if (! $location) {
+            return $account;
+        }
+
+        if ($account->chart_account_id && ! $force
+            && (int) $account->chart_account_id === (int) $location->id) {
+            return $account;
+        }
+
         if ($account->chart_account_id && ! $force) {
             return $account;
         }
 
-        $location = $this->resolveLocation($account);
-        if ($location && (int) $account->chart_account_id !== (int) $location->id) {
+        if ((int) $account->chart_account_id !== (int) $location->id) {
             $account->chart_account_id = $location->id;
             $account->save();
         }
 
-        return $account->fresh();
+        return $account->fresh() ?? $account;
     }
 
     /**
@@ -66,9 +102,20 @@ class FinancialAccountChartLinker
 
         FinancialAccount::query()->orderBy('id')->each(function (FinancialAccount $fa) use ($force, &$linked, &$skipped, &$missing) {
             $code = $this->locationCodeFor($fa);
+            if (! $code) {
+                $missing[] = $fa->name.'→(sin tipo reconocido)';
+                $skipped++;
+
+                return;
+            }
             $loc = ChartAccount::query()->where('code', $code)->first();
             if (! $loc) {
                 $missing[] = $fa->name.'→'.$code;
+                $skipped++;
+
+                return;
+            }
+            if ($fa->chart_account_id && ! $force && (int) $fa->chart_account_id === (int) $loc->id) {
                 $skipped++;
 
                 return;

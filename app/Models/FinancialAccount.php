@@ -16,6 +16,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'account_holder_id',
     'is_liability',
     'alias',
+    'institution',
+    'holder_name',
     'aliases',
     'status',
     'external_identifier',
@@ -26,6 +28,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'card_holder',
     'card_expiry_month',
     'card_expiry_year',
+    'card_issue_date',
+    'default_payment_financial_account_id',
     'description',
     'cached_balance',
 ])]
@@ -38,6 +42,7 @@ class FinancialAccount extends Model
             'is_liability' => 'boolean',
             'aliases' => 'array',
             'cached_balance' => 'decimal:2',
+            'card_issue_date' => 'date',
         ];
     }
 
@@ -54,6 +59,11 @@ class FinancialAccount extends Model
     public function holder(): BelongsTo
     {
         return $this->belongsTo(AccountHolder::class, 'account_holder_id');
+    }
+
+    public function defaultPaymentAccount(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'default_payment_financial_account_id');
     }
 
     public function movements(): HasMany

@@ -79,18 +79,55 @@
     </div>
 @endif
 
-{{-- Disponibilidades FA --}}
-@if (($derived['kind'] ?? '') === 'disponibilidades' && !empty($derived['accounts']) && $derived['accounts']->isNotEmpty())
+{{-- Disponibilidades FA (vista derivada por tipo → maestro) --}}
+@if (($derived['kind'] ?? '') === 'disponibilidades')
     <div class="mt-4">
         <h3 class="font-semibold text-sm mb-2">Cuentas financieras (derivadas)</h3>
-        @foreach ($derived['accounts'] as $fa)
-            <div class="flex justify-between text-sm border-t py-1.5" style="border-color: var(--ar-border);">
-                <span>{{ $fa->name }}</span>
-                <span class="tabular-nums {{ \App\Support\UiSemantics::cssClass((string)$fa->cached_balance, \App\Support\UiSemantics::MODE_ASSET) }}">
-                    ${{ number_format((float) $fa->cached_balance, 2, ',', '.') }}
-                </span>
+        <p class="ar-muted text-xs mb-2">Maestro: Cuentas financieras. Click abre la ficha para editar.</p>
+        @forelse (($derived['accounts'] ?? []) as $fa)
+            @php
+                $reliable = (bool) ($fa->balance_reliable ?? true);
+                $bal = (string) ($fa->computed_balance ?? $fa->cached_balance ?? '0');
+            @endphp
+            <div class="flex justify-between text-sm border-t py-1.5 gap-2" style="border-color: var(--ar-border);">
+                <a href="{{ $fa->master_url ?? route('accounts.edit', $fa) }}" class="underline">{{ $fa->name }}</a>
+                @if (! $reliable)
+                    <span class="ar-muted text-xs">Saldo no disponible</span>
+                @else
+                    <span class="tabular-nums {{ \App\Support\UiSemantics::cssClass($bal, \App\Support\UiSemantics::MODE_ASSET) }}">
+                        ${{ number_format((float) $bal, 2, ',', '.') }}
+                    </span>
+                @endif
             </div>
-        @endforeach
+        @empty
+            <p class="ar-muted text-sm">No hay cuentas financieras de este tipo.</p>
+        @endforelse
+    </div>
+@endif
+
+{{-- Tarjetas FA (vista derivada) --}}
+@if (($derived['kind'] ?? '') === 'cards')
+    <div class="mt-4">
+        <h3 class="font-semibold text-sm mb-2">Tarjetas de crédito (derivadas)</h3>
+        <p class="ar-muted text-xs mb-2">Maestro: Cuentas financieras. Deuda pendiente en rojo. Click abre el maestro.</p>
+        @forelse (($derived['cards'] ?? []) as $fa)
+            @php
+                $reliable = (bool) ($fa->balance_reliable ?? true);
+                $bal = (string) ($fa->computed_balance ?? $fa->cached_balance ?? '0');
+            @endphp
+            <div class="flex justify-between text-sm border-t py-1.5 gap-2" style="border-color: var(--ar-border);">
+                <a href="{{ $fa->master_url ?? route('accounts.edit', $fa) }}" class="underline">{{ $fa->name }}</a>
+                @if (! $reliable)
+                    <span class="ar-muted text-xs">Saldo no disponible</span>
+                @else
+                    <span class="tabular-nums {{ \App\Support\UiSemantics::cssClass($bal, \App\Support\UiSemantics::MODE_LIABILITY) }}">
+                        ${{ number_format((float) $bal, 2, ',', '.') }}
+                    </span>
+                @endif
+            </div>
+        @empty
+            <p class="ar-muted text-sm">No hay tarjetas activas.</p>
+        @endforelse
     </div>
 @endif
 

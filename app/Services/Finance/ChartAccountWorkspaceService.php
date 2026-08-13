@@ -22,6 +22,8 @@ class ChartAccountWorkspaceService
     public function __construct(
         private readonly ChartAccountAdminService $admin,
         private readonly ClientCurrentAccountRankingService $ccRanking,
+        private readonly FinancialAccountChartLinker $faLinker,
+        private readonly BalanceService $balances,
     ) {}
 
     /**
@@ -222,27 +224,35 @@ class ChartAccountWorkspaceService
      */
     private function disponibilidadesDerived(string $code): array
     {
-        $location = ChartAccount::query()->where('code', $code)->first();
-        if (! $location) {
-            return ['display' => 'insufficient', 'display_label' => 'Sin datos suficientes', 'total_ars' => null];
+        $types = $this->faLinker->accountTypesForCode($code);
+        if ($types === null) {
+            return ['display' => 'amount', 'display_label' => null, 'total_ars' => null];
         }
-        $ids = $location->selfAndDescendantIds();
-        $fas = FinancialAccount::query()
-            ->whereIn('chart_account_id', $ids)
-            ->where('status', 'active')
-            ->get(['id', 'cached_balance', 'type', 'is_liability']);
 
-        if ($fas->isEmpty() && $code !== '1.1') {
-            // Leaf location without linked FA: still show 0 as real empty cash bucket.
+        $fas = FinancialAccount::query()
+            ->with('currency:id,code')
+            ->whereIn('type', $types)
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get();
+
+        if ($fas->isEmpty()) {
             return ['display' => 'amount', 'display_label' => null, 'total_ars' => '0.00'];
         }
 
         $sum = '0.00';
+        $reliable = true;
         foreach ($fas as $fa) {
-            if ($fa->is_liability || ($fa->type?->value ?? $fa->type) === AccountType::CreditCard->value) {
+            if (! $fa->currency_id) {
+                $reliable = false;
                 continue;
             }
-            $sum = Money::add($sum, Money::normalize((string) $fa->cached_balance));
+            $bal = $this->balances->computeAccountBalance($fa->id);
+            $sum = Money::add($sum, Money::normalize($bal));
+        }
+
+        if (! $reliable && Money::isZero($sum)) {
+            return ['display' => 'unavailable', 'display_label' => 'Saldo no disponible', 'total_ars' => null];
         }
 
         return ['display' => 'amount', 'display_label' => null, 'total_ars' => $sum];
@@ -270,25 +280,56 @@ class ChartAccountWorkspaceService
      */
     private function cardsDerived(): array
     {
-        $fas = FinancialAccount::query()
-            ->where(function ($q) {
-                $q->where('type', AccountType::CreditCard->value)->orWhere('is_liability', true);
-            })
-            ->where('status', 'active')
-            ->get(['id', 'name', 'cached_balance']);
+        $fas = $this->financialAccountsForCode('2.1', activeOnly: true);
 
         if ($fas->isEmpty()) {
-            return ['display' => 'insufficient', 'display_label' => 'Sin datos suficientes', 'total_ars' => null];
+            return ['display' => 'amount', 'display_label' => null, 'total_ars' => '0.00', 'cards' => $fas];
         }
 
         $sum = '0.00';
         foreach ($fas as $fa) {
-            // Deuda tarjeta: saldo de pasivo (mostrar magnitud positiva si el cache es negativo/deuda).
-            $bal = Money::normalize((string) $fa->cached_balance);
-            $sum = Money::add($sum, Money::isNegative($bal) ? Money::mul($bal, '-1') : $bal);
+            if (! ($fa->getAttribute('balance_reliable') ?? true)) {
+                continue;
+            }
+            // Deuda tarjeta: magnitud positiva de pasivo.
+            $bal = Money::normalize((string) $fa->getAttribute('computed_balance'));
+            $debt = Money::isNegative($bal) ? Money::mul($bal, '-1') : $bal;
+            $sum = Money::add($sum, $debt);
         }
 
         return ['display' => 'amount', 'display_label' => null, 'total_ars' => $sum, 'cards' => $fas];
+    }
+
+    /**
+     * Vista derivada: lista FA por tipo según código del plan (sin nodos contables por FA).
+     *
+     * @return Collection<int, FinancialAccount>
+     */
+    public function financialAccountsForCode(string $code, bool $activeOnly = true): Collection
+    {
+        $types = $this->faLinker->accountTypesForCode($code);
+        if ($types === null) {
+            return collect();
+        }
+
+        $q = FinancialAccount::query()
+            ->with('currency:id,code')
+            ->whereIn('type', $types)
+            ->when($activeOnly, fn ($qq) => $qq->where('status', 'active'))
+            ->orderBy('name');
+
+        $fas = $q->get();
+        foreach ($fas as $fa) {
+            $reliable = $fa->currency_id !== null;
+            $fa->setAttribute('balance_reliable', $reliable);
+            $fa->setAttribute(
+                'computed_balance',
+                $reliable ? $this->balances->computeAccountBalance($fa->id) : null
+            );
+            $fa->setAttribute('master_url', route('accounts.edit', $fa));
+        }
+
+        return $fas;
     }
 
     /**
@@ -371,10 +412,7 @@ class ChartAccountWorkspaceService
             'includes_descendants' => ! $account->isLeaf(),
             'distribution' => $distribution,
             'derived' => $derived,
-            'financial_accounts' => FinancialAccount::query()
-                ->where('chart_account_id', $account->id)
-                ->orderBy('name')
-                ->get(['id', 'name', 'type', 'cached_balance', 'status']),
+            'financial_accounts' => $this->financialAccountsForCode((string) $account->code, activeOnly: false),
             'amount_mode' => UiSemantics::modeForChartType($account->type),
             'sort_dir' => $sortDir,
             'q' => $q,
@@ -458,14 +496,12 @@ class ChartAccountWorkspaceService
             $panel['fifo_ready'] = true;
         } elseif ($code === '1.1' || str_starts_with($code, '1.1.')) {
             $panel['kind'] = 'disponibilidades';
-            $panel['accounts'] = FinancialAccount::query()
-                ->whereIn('chart_account_id', $account->selfAndDescendantIds())
-                ->where('status', 'active')
-                ->orderBy('name')
-                ->get(['id', 'name', 'type', 'cached_balance', 'chart_account_id']);
+            $panel['accounts'] = $this->financialAccountsForCode($code, activeOnly: true);
+            $panel['help'] = $panel['help'] ?: 'Vista derivada del maestro Cuentas financieras (por tipo). La edición se hace allí.';
         } elseif ($code === '2.1') {
             $panel['kind'] = 'cards';
-            $panel['cards'] = $summary['cards'] ?? collect();
+            $panel['cards'] = $summary['cards'] ?? $this->financialAccountsForCode('2.1', activeOnly: true);
+            $panel['help'] = $panel['help'] ?: 'Vista derivada del maestro Cuentas financieras · tarjetas. Click abre el maestro.';
         } elseif ($code === '2.2') {
             $panel['kind'] = 'suppliers';
         } elseif ($code === '3' || str_starts_with($code, '3.')) {

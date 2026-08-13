@@ -245,15 +245,16 @@ test('§10.6 FA create auto-link por tipo sin depender de asignación', function
     $expected = ChartAccount::query()->where('code', '1.1.2')->value('id');
     expect((int) $fa->chart_account_id)->toBe((int) $expected);
 
+    // Mapeo manual prohibido en tipos normales: la ubicación sigue derivada del tipo (Bancos 1.1.2).
     $other = ChartAccount::query()->where('code', '1.1.1')->firstOrFail();
     $this->put(route('accounts.update', $fa), [
         'name' => 'Banco Postfase',
         'type' => AccountType::Bank->value,
         'status' => 'active',
         'chart_account_id' => $other->id,
-    ])->assertRedirect(route('accounts.index'));
+    ])->assertSessionHasErrors('chart_account_id');
 
-    expect((int) $fa->fresh()->chart_account_id)->toBe((int) $other->id);
+    expect((int) $fa->fresh()->chart_account_id)->toBe((int) $expected);
 });
 
 test('§10.7 navegación sin dry-run ni nombres internos', function () {
