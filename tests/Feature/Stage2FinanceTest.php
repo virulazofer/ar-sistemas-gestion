@@ -89,7 +89,7 @@ test('registrar ingresos y gastos ARS/USD y verificar saldos', function () {
 
     $service->createSimple([
         'type' => 'income',
-        'scope' => 'personal',
+        'scope' => 'professional',
         'financial_account_id' => $ars->id,
         'amount' => '10000.50',
     ]);
@@ -130,7 +130,7 @@ test('transferencia ARS y USD no altera resultado ingresos/gastos', function () 
     $balances = app(BalanceService::class);
 
     $service->createSimple([
-        'type' => 'income', 'scope' => 'personal', 'financial_account_id' => $a->id, 'amount' => '100000',
+        'type' => 'income', 'scope' => 'professional', 'financial_account_id' => $a->id, 'amount' => '100000',
     ]);
     $service->createSimple([
         'type' => 'income', 'scope' => 'professional', 'financial_account_id' => $u1->id, 'amount' => '80',
@@ -244,7 +244,7 @@ test('rollback de transferencia fallida', function () {
     $a = makeArsAccount('A');
     $b = makeArsAccount('B');
     app(MovementService::class)->createSimple([
-        'type' => 'income', 'scope' => 'personal', 'financial_account_id' => $a->id, 'amount' => '1000',
+        'type' => 'income', 'scope' => 'professional', 'financial_account_id' => $a->id, 'amount' => '1000',
     ]);
 
     $beforeCount = Movement::count();

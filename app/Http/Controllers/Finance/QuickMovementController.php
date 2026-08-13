@@ -11,6 +11,7 @@ use App\Models\ChartAccount;
 use App\Models\Client;
 use App\Models\FinancialAccount;
 use App\Services\Commercial\ReceiptService;
+use App\Services\Finance\ChartAccountUsageService;
 use App\Services\Finance\ExchangeRateService;
 use App\Services\Finance\MovementService;
 use App\Services\Finance\RememberedClassificationService;
@@ -37,6 +38,7 @@ class QuickMovementController extends Controller
         private readonly ReceiptService $receipts,
         private readonly ScopeOriginRules $scopeRules,
         private readonly RememberedClassificationService $remembered,
+        private readonly ChartAccountUsageService $chartUsage,
     ) {}
 
     public function create(Request $request): View
@@ -84,6 +86,7 @@ class QuickMovementController extends Controller
             'preselectClient' => $preselectClient,
             'types' => CommercialChargeType::cases(),
             'documentalStatuses' => DocumentalStatus::cases(),
+            'chartUsage' => $this->chartUsage->forUser(),
         ]);
     }
 
@@ -136,12 +139,17 @@ class QuickMovementController extends Controller
             'type' => ['required', Rule::in(['income', 'expense'])],
             'scope' => ['required', Rule::in($scopeAllowed)],
             'financial_account_id' => ['required', 'exists:financial_accounts,id'],
-            'chart_account_id' => ['nullable', 'exists:chart_accounts,id'],
+            'chart_account_id' => [
+                Rule::requiredIf(fn () => ! $request->boolean('apply_to_cc')),
+                'nullable',
+                'exists:chart_accounts,id',
+            ],
             'category_id' => ['nullable', 'exists:categories,id'],
             'subcategory_id' => ['nullable', 'exists:subcategories,id'],
             'amount' => ['required', 'numeric', 'gt:0'],
             'movement_date' => ['required', 'date'],
             'description' => ['nullable', 'string', 'max:255'],
+            'observations' => ['nullable', 'string', 'max:2000'],
             'client_id' => ['nullable', 'exists:clients,id'],
             'apply_to_cc' => ['nullable', 'boolean'],
             'insufficient_option' => ['nullable', Rule::in([
@@ -158,6 +166,11 @@ class QuickMovementController extends Controller
             'remember_action' => ['nullable', Rule::in(['ask', 'yes', 'no', 'update', 'once', 'forget'])],
             'memory_id' => ['nullable', 'integer', 'exists:remembered_classifications,id'],
             'applied_from_memory' => ['nullable', 'boolean'],
+        ], [
+            'chart_account_id.required' => 'La cuenta contable es obligatoria.',
+            'chart_account_id.exists' => 'La cuenta contable seleccionada no es válida.',
+            'amount.gt' => 'El importe debe ser mayor a cero.',
+            'financial_account_id.required' => 'La cuenta financiera es obligatoria.',
         ]);
 
         try {

@@ -16,6 +16,8 @@
             <option value="">Ámbito</option>
             <option value="personal" @selected(request('scope')==='personal')>Personal</option>
             <option value="professional" @selected(request('scope')==='professional')>Profesional</option>
+            <option value="financial" @selected(request('scope')==='financial')>Financiero</option>
+            <option value="mixed" @selected(request('scope')==='mixed')>Mixto</option>
         </select>
         <select name="type" class="ar-input w-auto">
             <option value="">Tipo</option>
@@ -36,11 +38,12 @@
             <thead>
                 <tr>
                     <th>Fecha</th>
-                    <th>Cuenta financiera</th>
                     <th>Descripción</th>
-                    <th>Ámbito</th>
                     <th>Cuenta contable</th>
+                    <th>Ámbito</th>
+                    <th>Cuenta financiera</th>
                     <th class="text-right">Importe</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
@@ -54,35 +57,54 @@
                         $chartLabel = $movement->chartAccount
                             ? trim(($movement->chartAccount->code ?? '').' '.($movement->chartAccount->name ?? ''))
                             : '—';
-                        $catHint = $movement->category?->name;
-                        if ($movement->subcategory) {
-                            $catHint = ($catHint ? $catHint.' / ' : '').$movement->subcategory->name;
-                        }
+                        $scopeLabel = $movement->type->value === 'income'
+                            ? ('Origen: '.$movement->scope->label())
+                            : $movement->scope->label();
+                        $showUrl = route('movements.show', $movement);
                     @endphp
-                    <tr>
-                        <td><a href="{{ route('movements.show', $movement) }}" style="color: var(--ar-brand);">{{ $movement->movement_date?->format('d/m/Y') }}</a></td>
-                        <td>{{ $movement->account?->name }}</td>
+                    <tr
+                        class="mov-row"
+                        style="cursor: pointer;"
+                        onclick="window.location='{{ $showUrl }}'"
+                        onkeydown="if(event.key==='Enter'){window.location='{{ $showUrl }}'}"
+                        tabindex="0"
+                        role="link"
+                        aria-label="Ver movimiento {{ $movement->displayCode() }}"
+                    >
                         <td>
-                            {{ $movement->description ?: '—' }}
-                            @if ($catHint)
-                                <div class="ar-muted text-xs">Cat: {{ $catHint }}</div>
-                            @endif
+                            <a href="{{ $showUrl }}" style="color: var(--ar-brand);" onclick="event.stopPropagation()">
+                                {{ $movement->movement_date?->format('d/m/Y') }}
+                            </a>
                         </td>
-                        <td>{{ $movement->scope->label() }}</td>
+                        <td>
+                            <a href="{{ $showUrl }}" style="color: inherit; text-decoration: underline;" onclick="event.stopPropagation()">
+                                {{ $movement->description ?: '—' }}
+                            </a>
+                            <div class="ar-muted text-xs">{{ $movement->displayCode() }}</div>
+                        </td>
                         <td class="text-xs">{{ $chartLabel }}</td>
+                        <td>{{ $scopeLabel }}</td>
+                        <td>{{ $movement->account?->name }}</td>
                         <td class="text-right {{ $amountClass }}">
                             {{ number_format((float) $signedDisplay, 2, ',', '.') }} {{ $movement->account?->currency?->code }}
+                        </td>
+                        <td class="text-right" onclick="event.stopPropagation()">
+                            <a href="{{ $showUrl }}" class="ar-btn ar-btn-secondary text-xs">Ver</a>
                         </td>
                     </tr>
                 @endforeach
             </tbody>
         </table>
     </div>
+    <style>
+        .mov-row:hover { background: var(--ar-surface-2, rgba(0,0,0,.04)); }
+        .mov-row:focus-visible { outline: 2px solid var(--ar-brand); outline-offset: -2px; }
+    </style>
     <p class="ar-muted mt-2 text-xs">
         <strong>Cuenta financiera</strong> = caja/banco/tarjeta donde vive el dinero.
         <strong>Cuenta contable</strong> = plan de cuentas (mapeo).
-        La categoría operativa aparece bajo la descripción.
-        Colores semánticos solo en presentación (ingreso verde / egreso rojo; en CC: rojo = nos deben). El signo en DB no se modifica.
+        En ingresos, la columna Ámbito muestra el Origen.
+        Clic en la fila, descripción o «Ver» abre el detalle.
     </p>
     <div class="mt-4">{{ $movements->links() }}</div>
 </x-app-layout>

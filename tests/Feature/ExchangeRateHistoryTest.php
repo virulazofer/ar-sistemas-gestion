@@ -104,7 +104,7 @@ test('movimientos siguen congelando cotizacion historica', function () {
 
     $movement = app(\App\Services\Finance\MovementService::class)->createSimple([
         'type' => 'income',
-        'scope' => 'personal',
+        'scope' => 'professional',
         'financial_account_id' => $account->id,
         'amount' => '100',
         'exchange_rate_id' => $rate->id,

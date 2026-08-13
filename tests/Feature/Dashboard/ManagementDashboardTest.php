@@ -151,13 +151,13 @@ it('filtra ámbitos personal y profesional sin recalcular clasificación', funct
         'description' => 'Ing profesional',
     ]);
     $mov->createSimple([
-        'type' => MovementType::Income->value,
+        'type' => MovementType::Expense->value,
         'financial_account_id' => $cash->id,
         'amount' => '200.00',
         'scope' => MovementScope::Personal->value,
         'category_id' => $cat->id,
         'movement_date' => '2026-08-06',
-        'description' => 'Ing personal',
+        'description' => 'Gasto personal',
     ]);
 
     $svc = app(ManagementDashboardService::class);
@@ -165,9 +165,10 @@ it('filtra ámbitos personal y profesional sin recalcular clasificación', funct
     $pro = $svc->build(['preset' => 'this_month', 'scope' => 'professional']);
     $per = $svc->build(['preset' => 'this_month', 'scope' => 'personal']);
 
-    expect($all['financial']['income_ars'])->toBe('1200.00')
+    expect($all['financial']['income_ars'])->toBe('1000.00')
         ->and($pro['financial']['income_ars'])->toBe('1000.00')
-        ->and($per['financial']['income_ars'])->toBe('200.00')
+        ->and($per['financial']['income_ars'])->toBe('0.00')
+        ->and($per['financial']['expense_ars'])->toBe('200.00')
         ->and($per['economic']['sales_ars'])->toBe('0.00')
         ->and($per['cc']['applicable'])->toBeFalse();
 });
@@ -325,7 +326,7 @@ it('posición histórica al cierre no usa saldo de hoy', function () {
         'type' => 'income',
         'financial_account_id' => $cash->id,
         'amount' => '1000.00',
-        'scope' => 'personal',
+        'scope' => 'professional',
         'movement_date' => '2026-07-15',
     ]);
     // Movimiento posterior al período: no debe entrar en cierre julio
@@ -333,7 +334,7 @@ it('posición histórica al cierre no usa saldo de hoy', function () {
         'type' => 'income',
         'financial_account_id' => $cash->id,
         'amount' => '5000.00',
-        'scope' => 'personal',
+        'scope' => 'professional',
         'movement_date' => '2026-08-05',
     ]);
     $mov->createSimple([
@@ -383,7 +384,7 @@ it('pago tarjeta no duplica gasto financiero (transferencia)', function () {
         'type' => 'income',
         'financial_account_id' => $cash->id,
         'amount' => '1000.00',
-        'scope' => 'personal',
+        'scope' => 'professional',
         'movement_date' => '2026-07-01',
     ]);
 

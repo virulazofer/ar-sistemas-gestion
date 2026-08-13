@@ -9,8 +9,11 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
+    'code',
     'transfer_id',
     'movement_date',
     'movement_time',
@@ -29,6 +32,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'subcategory_id',
     'chart_account_id',
     'description',
+    'observations',
     'status',
     'void_reason',
     'voided_by',
@@ -115,6 +119,36 @@ class Movement extends Model
         return $this->belongsTo(User::class, 'voided_by');
     }
 
+    public function editAudits(): HasMany
+    {
+        return $this->hasMany(MovementEditAudit::class);
+    }
+
+    public function receipt(): HasOne
+    {
+        return $this->hasOne(Receipt::class, 'financial_movement_id');
+    }
+
+    public function sale(): HasOne
+    {
+        return $this->hasOne(Sale::class, 'financial_movement_id');
+    }
+
+    public function purchase(): HasOne
+    {
+        return $this->hasOne(Purchase::class, 'financial_movement_id');
+    }
+
+    public function clientLedgerEntry(): HasOne
+    {
+        return $this->hasOne(ClientLedgerEntry::class, 'financial_movement_id');
+    }
+
+    public function supplierLedgerEntry(): HasOne
+    {
+        return $this->hasOne(SupplierLedgerEntry::class, 'financial_movement_id');
+    }
+
     public function scopePosted(Builder $query): Builder
     {
         return $query->where('status', MovementStatus::Posted->value);
@@ -133,5 +167,10 @@ class Movement extends Model
     public function affectsResult(): bool
     {
         return in_array($this->type, [MovementType::Income, MovementType::Expense], true);
+    }
+
+    public function displayCode(): string
+    {
+        return $this->code ?: ('#'.$this->id);
     }
 }

@@ -67,7 +67,6 @@
             type: '{{ old('type', session('quick_income_decision') ? 'income' : 'expense') }}',
             scope: '{{ old('scope', 'personal') }}',
             chartAccountId: '{{ old('chart_account_id') }}',
-            conceptQuery: '',
             description: '{{ old('description') }}',
             accountId: '{{ old('financial_account_id') }}',
             applyToCc: {{ old('apply_to_cc', $decision['apply_to_cc'] ?? false) ? 'true' : 'false' }},
@@ -93,14 +92,6 @@
             get scopeLabel() {
                 return this.type === 'income' ? 'Origen' : 'Ámbito'
             },
-            get filteredConcepts() {
-                const t = this.type === 'income' ? 'income' : 'expense'
-                const q = (this.conceptQuery || '').toLowerCase().trim()
-                return this.concepts
-                    .filter(c => c.type === t)
-                    .filter(c => !q || c.path.toLowerCase().includes(q) || c.name.toLowerCase().includes(q) || c.code.includes(q))
-                    .slice(0, 40)
-            },
             get selectedConcept() {
                 return this.concepts.find(c => String(c.id) === String(this.chartAccountId))
             },
@@ -124,13 +115,15 @@
                     this.scope = allowed[0]
                 }
                 this.chartAccountId = ''
-                this.conceptQuery = ''
                 this.memoryMatch = null
+                this.$dispatch('chart-account-selected', { id: '' })
                 this.lookupMemory()
             },
-            onConceptChange() {
-                const c = this.selectedConcept
-                if (c && c.suggested_scope && !this.memoryMatch) {
+            onConceptPicked(detail) {
+                if (!detail?.id) return
+                this.chartAccountId = String(detail.id)
+                const c = detail.concept || this.selectedConcept
+                if (c && c.suggested_scope && this.memoryMatch !== 'exact') {
                     const allowed = this.scopeOptions.map(o => o.value)
                     if (allowed.includes(c.suggested_scope)) {
                         this.scope = c.suggested_scope
@@ -151,6 +144,7 @@
                     this.memoryId = j.memory_id || null
                     if (j.match === 'exact' && j.chart_account_id) {
                         this.chartAccountId = String(j.chart_account_id)
+                        this.$dispatch('chart-account-selected', { id: j.chart_account_id })
                         if (j.scope) {
                             const allowed = this.scopeOptions.map(o => o.value)
                             if (allowed.includes(j.scope)) this.scope = j.scope
@@ -178,9 +172,20 @@
                 this.memoryMatch = null
                 this.memoryPath = null
                 this.memoryId = null
+            },
+            applySuggestion() {
+                fetch(@js(route('remembered-classifications.lookup')) + '?description=' + encodeURIComponent(this.description) + '&type=' + this.type)
+                    .then(r => r.json()).then(j => {
+                        if (j.chart_account_id) {
+                            this.chartAccountId = String(j.chart_account_id)
+                            this.$dispatch('chart-account-selected', { id: j.chart_account_id })
+                            if (j.scope) this.scope = j.scope
+                        }
+                    })
             }
         }"
         x-init="onTypeChange()"
+        @chart-account-picked.window="onConceptPicked($event.detail)"
     >
         @if (session('status'))
             <p class="mb-4 rounded border px-3 py-2 text-sm" style="border-color: var(--ar-border); background: var(--ar-surface-2, transparent);">
@@ -253,15 +258,14 @@
 
             <div x-show="type !== 'transfer'" class="space-y-4">
                 <div>
-                    <label class="ar-label" for="concept_q">Clasificación</label>
-                    <input id="concept_q" type="search" class="ar-input mb-2" placeholder="Buscar: Automotor › Combustible…" x-model="conceptQuery">
-                    <select id="chart_account_id" name="chart_account_id" class="ar-input" x-model="chartAccountId" @change="onConceptChange()">
-                        <option value="">—</option>
-                        <template x-for="c in filteredConcepts" :key="c.id">
-                            <option :value="c.id" x-text="c.path"></option>
-                        </template>
-                    </select>
-                    <p class="ar-muted mt-1 text-xs" x-show="selectedConcept" x-text="selectedConcept?.path"></p>
+                    <x-chart-account-omnibox
+                        :concepts="$conceptsPayload"
+                        :recent="$chartUsage['recent'] ?? []"
+                        :frequent="$chartUsage['frequent'] ?? []"
+                        :initial-id="old('chart_account_id')"
+                        :required="true"
+                    />
+                    <p class="ar-muted mt-1 text-xs">Concepto = hoja del plan de cuentas. Un solo selector (recientes, frecuentes y typeahead).</p>
                     <div x-show="memoryMatch === 'exact'" class="mt-2 flex flex-wrap items-center gap-2 text-xs">
                         <span class="rounded px-2 py-0.5" style="background: var(--ar-surface-2, #f3f4f6);">Recordada (exacta)</span>
                         <button type="button" class="underline" @click="forgetMemory()">Dejar de recordar</button>
@@ -270,14 +274,11 @@
                         <span class="font-medium">Sugerido:</span>
                         <span x-text="memoryPath"></span>
                         <span class="ar-muted"> · confirmá o cambiá (no se aplica sola)</span>
-                        <button type="button" class="underline ml-2" @click="
-                            lookupMemory().then(() => {});
-                            fetch(@js(route('remembered-classifications.lookup')) + '?description=' + encodeURIComponent(description) + '&type=' + type)
-                              .then(r => r.json()).then(j => {
-                                if (j.chart_account_id) { chartAccountId = String(j.chart_account_id); if (j.scope) scope = j.scope }
-                              })
-                        ">Usar sugerencia</button>
+                        <button type="button" class="underline ml-2" @click="applySuggestion()">Usar sugerencia</button>
                     </div>
+                    @error('chart_account_id')
+                        <p class="mt-1 text-xs" style="color: var(--ar-danger);">{{ $message }}</p>
+                    @enderror
                 </div>
                 <input type="hidden" name="remember_action" value="ask">
 

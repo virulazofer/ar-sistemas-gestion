@@ -50,6 +50,7 @@
                         <td class="text-xs">
                             @if ($isCard)
                                 {{ $account->card_brand ?: 'Tarjeta' }} ·····{{ $account->card_last4 ?: '????' }}
+                                <span class="ar-muted"> · sin CVV</span>
                                 @if ($account->card_holder)<br>{{ $account->card_holder }}@endif
                                 @if ($account->card_expiry_month && $account->card_expiry_year)
                                     <br>{{ str_pad((string) $account->card_expiry_month, 2, '0', STR_PAD_LEFT) }}/{{ $account->card_expiry_year }}
