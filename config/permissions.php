@@ -93,7 +93,7 @@ return [
         'exchange_rates' => ['view', 'create', 'edit'],
         'categories' => ['view', 'create', 'edit'],
         'clients' => ['view', 'create', 'edit', 'void', 'export', 'regularize', 'edit_code'],
-        'suppliers' => ['view', 'create', 'edit', 'void', 'export'],
+        'suppliers' => ['view', 'create', 'edit', 'void', 'export', 'edit_code'],
         'products' => ['view', 'create', 'edit', 'void', 'export'],
         'stock' => ['view', 'create', 'edit', 'void', 'adjust', 'transfer', 'consume', 'rebuild', 'export'],
         'purchases' => ['view', 'create', 'edit', 'void', 'export'],

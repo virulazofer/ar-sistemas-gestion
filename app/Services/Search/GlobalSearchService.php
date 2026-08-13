@@ -438,12 +438,18 @@ class GlobalSearchService
         $rows = (clone $query)->orderBy('name')->limit(self::RANK_CAP)->get();
 
         $items = $rows->map(fn (Supplier $s) => [
-            'label' => $s->name,
+            'label' => $s->labelWithCode(),
             'route' => 'suppliers.show',
             'params' => ['supplier' => $s->id],
             'subtitle' => collect([$s->cuit, $s->email])->filter()->implode(' · ') ?: null,
             'url' => route('suppliers.show', $s),
-            'match' => $this->entityRank($s->name, $needle, [(string) $s->business_name, (string) $s->cuit, (string) $s->email]),
+            'match' => $this->entityRank($s->labelWithCode(), $needle, [
+                (string) $s->codeFormatted(),
+                (string) $s->name,
+                (string) $s->business_name,
+                (string) $s->cuit,
+                (string) $s->email,
+            ]),
             'universe' => 'data',
         ])->sortBy([
             ['match', 'asc'],
@@ -616,12 +622,9 @@ class GlobalSearchService
                 ->orWhere('cuit', 'like', $like)
                 ->orWhere('dni', 'like', $like)
                 ->orWhere('email', 'like', $like);
-            $code = ltrim($needle, '0');
-            if ($code !== '' && ctype_digit($code)) {
-                $query->orWhere('code', (int) $code);
-            }
-            if (ctype_digit($needle)) {
-                $query->orWhere('code', (int) $needle);
+            $parsed = app(\App\Services\Clients\ClientCodeService::class)->parse($needle);
+            if ($parsed !== null) {
+                $query->orWhere('code', $parsed);
             }
         });
     }
@@ -630,11 +633,15 @@ class GlobalSearchService
     {
         $like = '%'.$needle.'%';
 
-        return Supplier::query()->where(function ($query) use ($like) {
+        return Supplier::query()->where(function ($query) use ($like, $needle) {
             $query->where('name', 'like', $like)
                 ->orWhere('business_name', 'like', $like)
                 ->orWhere('cuit', 'like', $like)
                 ->orWhere('email', 'like', $like);
+            $parsed = app(\App\Services\Suppliers\SupplierCodeService::class)->parse($needle);
+            if ($parsed !== null) {
+                $query->orWhere('code', $parsed);
+            }
         });
     }
 

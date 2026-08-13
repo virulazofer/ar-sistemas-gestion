@@ -7,6 +7,7 @@ use App\Models\Document;
 use App\Models\Supplier;
 use App\Rules\Cuit;
 use App\Services\AuditLogger;
+use App\Services\Suppliers\SupplierCodeService;
 use App\Services\Suppliers\SupplierLedgerService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,6 +18,7 @@ class SupplierController extends Controller
 {
     public function __construct(
         private readonly SupplierLedgerService $ledger,
+        private readonly SupplierCodeService $codes,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -24,12 +26,19 @@ class SupplierController extends Controller
     {
         $q = trim((string) $request->get('q', ''));
         $suppliers = Supplier::query()
-            ->when($q !== '', fn ($query) => $query->where(function ($inner) use ($q) {
-                $inner->where('name', 'like', "%{$q}%")
-                    ->orWhere('business_name', 'like', "%{$q}%")
-                    ->orWhere('cuit', 'like', "%{$q}%")
-                    ->orWhere('email', 'like', "%{$q}%");
-            }))
+            ->when($q !== '', function ($query) use ($q) {
+                $parsed = $this->codes->parse($q);
+                $query->where(function ($inner) use ($q, $parsed) {
+                    $inner->where('name', 'like', "%{$q}%")
+                        ->orWhere('business_name', 'like', "%{$q}%")
+                        ->orWhere('cuit', 'like', "%{$q}%")
+                        ->orWhere('email', 'like', "%{$q}%");
+                    if ($parsed !== null) {
+                        $inner->orWhere('code', $parsed);
+                    }
+                });
+            })
+            ->orderBy('code')
             ->orderBy('name')
             ->paginate(20)
             ->withQueryString();
@@ -45,6 +54,9 @@ class SupplierController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $data = $this->validated($request);
+        if (empty($data['code'])) {
+            $data['code'] = $this->codes->allocateNext();
+        }
         $supplier = Supplier::query()->create($data);
         $this->audit->log('supplier_created', $supplier, null, $supplier->toArray(), 'Proveedor creado');
 
@@ -68,7 +80,16 @@ class SupplierController extends Controller
 
     public function update(Request $request, Supplier $supplier): RedirectResponse
     {
-        $data = $this->validated($request);
+        $data = $this->validated($request, $supplier->id);
+        try {
+            $data['code'] = $this->codes->assertEditable(
+                $supplier->code,
+                $data['code'] ?? $supplier->code,
+                $request->user()->can('suppliers.edit_code')
+            );
+        } catch (\Throwable $e) {
+            return back()->withInput()->withErrors(['code' => $e->getMessage()]);
+        }
         $old = $supplier->toArray();
         $supplier->update($data);
         $this->audit->log('supplier_updated', $supplier, $old, $supplier->fresh()->toArray(), 'Proveedor actualizado');
@@ -99,12 +120,12 @@ class SupplierController extends Controller
         return back()->with('status', 'Documento adjuntado.');
     }
 
-    private function validated(Request $request): array
+    private function validated(Request $request, ?int $ignoreId = null): array
     {
         $partyType = (string) $request->input('party_type', 'particular');
 
         // Proveedores: identificación por CUIT (no DNI). Particular puede existir, pero sin DNI.
-        $data = $request->validate([
+        $rules = [
             'name' => ['required', 'string', 'max:180'],
             'party_type' => ['required', Rule::enum(\App\Enums\PartyType::class)],
             'business_name' => [
@@ -126,8 +147,22 @@ class SupplierController extends Controller
             'contact_name' => ['nullable', 'string', 'max:120'],
             'status' => ['required', Rule::in(['active', 'inactive'])],
             'notes' => ['nullable', 'string', 'max:5000'],
-        ]);
+        ];
 
+        if ($request->filled('code')) {
+            $parsed = $this->codes->parse($request->input('code'));
+            if ($parsed !== null) {
+                $request->merge(['code' => $parsed]);
+            }
+        }
+
+        if ($ignoreId !== null && $request->user()?->can('suppliers.edit_code')) {
+            $rules['code'] = ['nullable', 'integer', 'min:1', Rule::unique('suppliers', 'code')->ignore($ignoreId)];
+        } else {
+            $rules['code'] = ['nullable', 'integer', 'min:1'];
+        }
+
+        $data = $request->validate($rules);
         $data['cuit'] = Cuit::normalize($data['cuit'] ?? null);
         $data['dni'] = null;
 

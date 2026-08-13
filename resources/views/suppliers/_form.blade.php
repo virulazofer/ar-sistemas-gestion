@@ -25,6 +25,13 @@
         <input id="name" name="name" class="ar-input" value="{{ old('name', $supplier?->name) }}" required>
     </div>
 
+    @if ($supplier?->code)
+        <div>
+            <label class="ar-label">Código</label>
+            <p class="ar-input bg-transparent" style="border-style: dashed;">{{ $supplier->codeFormatted() }} <span class="ar-muted text-xs">(inmutable)</span></p>
+        </div>
+    @endif
+
     <div x-show="partyType === 'empresa'" x-cloak>
         <label class="ar-label" for="business_name">Razón social</label>
         <input id="business_name" name="business_name" class="ar-input" value="{{ old('business_name', $supplier?->business_name) }}" :required="partyType === 'empresa'">

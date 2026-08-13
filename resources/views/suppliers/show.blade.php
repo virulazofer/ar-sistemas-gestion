@@ -2,7 +2,7 @@
     <x-slot name="header">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
-                <h1 class="text-xl font-semibold">{{ $supplier->name }}</h1>
+                <h1 class="text-xl font-semibold">{{ $supplier->labelWithCode() }}</h1>
                 <p class="ar-muted text-sm">{{ $supplier->business_name }} · {{ $supplier->tax_condition }}</p>
             </div>
             <div class="flex flex-wrap gap-2">
@@ -35,7 +35,7 @@
 
     <div class="mb-4 grid gap-4 lg:grid-cols-3">
         <div class="ar-card space-y-1 p-4 text-sm lg:col-span-2">
-            <p><span class="ar-muted">CUIT:</span> {{ $supplier->cuit ?: '—' }} · <span class="ar-muted">DNI:</span> {{ $supplier->dni ?: '—' }}</p>
+            <p><span class="ar-muted">Código:</span> {{ $supplier->codeFormatted() }} · <span class="ar-muted">CUIT:</span> {{ $supplier->cuit ?: '—' }} · <span class="ar-muted">DNI:</span> {{ $supplier->dni ?: '—' }}</p>
             <p><span class="ar-muted">Tel:</span> {{ $supplier->phone ?: '—' }} · <span class="ar-muted">Email:</span> {{ $supplier->email ?: '—' }}</p>
             <p><span class="ar-muted">Contacto:</span> {{ $supplier->contact_name ?: '—' }}</p>
             <p><span class="ar-muted">Dirección:</span> {{ $supplier->address ?: '—' }}</p>

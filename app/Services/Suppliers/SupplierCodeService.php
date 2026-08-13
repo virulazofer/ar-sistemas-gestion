@@ -1,15 +1,15 @@
 <?php
 
-namespace App\Services\Clients;
+namespace App\Services\Suppliers;
 
-use App\Models\Client;
 use App\Models\Setting;
+use App\Models\Supplier;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
-class ClientCodeService
+class SupplierCodeService
 {
-    public const PREFIX = 'C';
+    public const PREFIX = 'P';
 
     public function format(?int $code): string
     {
@@ -20,13 +20,13 @@ class ClientCodeService
         return self::PREFIX.sprintf('%03d', $code);
     }
 
-    public function label(Client $client): string
+    public function label(Supplier $supplier): string
     {
-        return $this->format($client->code).' — '.$client->name;
+        return $this->format($supplier->code).' — '.$supplier->name;
     }
 
     /**
-     * Parse user input like "C001", "c1", "001", "1" into a positive int, or null.
+     * Parse user input like "P001", "p1", "001", "1" into a positive int, or null.
      */
     public function parse(mixed $raw): ?int
     {
@@ -39,17 +39,17 @@ class ClientCodeService
             return null;
         }
 
-        if (preg_match('/^[Cc]\s*0*([0-9]+)$/', $s, $m)) {
+        if (preg_match('/^[Pp]\s*0*([0-9]+)$/', $s, $m)) {
             $n = (int) $m[1];
 
             return $n > 0 ? $n : null;
         }
 
         if (ctype_digit($s)) {
-            $n = (int) ltrim($s, '0');
-            if ($s === '0' || $s === '00' || $s === '000') {
+            if ($s === '0' || preg_match('/^0+$/', $s)) {
                 return null;
             }
+            $n = (int) ltrim($s, '0');
 
             return $n > 0 ? $n : null;
         }
@@ -60,17 +60,16 @@ class ClientCodeService
     public function allocateNext(): int
     {
         return (int) DB::transaction(function () {
-            $next = (int) Setting::getValue('clients.next_code', 0);
-            $max = (int) Client::query()->max('code');
+            $next = (int) Setting::getValue('suppliers.next_code', 0);
+            $max = (int) Supplier::query()->max('code');
             if ($next <= 0) {
                 $next = $max > 0 ? $max + 1 : 1;
             }
-            // Nunca reutilizar: el siguiente siempre es >= max(existente)+1.
             if ($max > 0 && $next <= $max) {
                 $next = $max + 1;
             }
 
-            Setting::setValue('clients.next_code', $next + 1, 'int');
+            Setting::setValue('suppliers.next_code', $next + 1, 'int');
 
             return $next;
         });
@@ -78,9 +77,9 @@ class ClientCodeService
 
     public function syncNextFromMax(): int
     {
-        $max = (int) Client::query()->max('code');
+        $max = (int) Supplier::query()->max('code');
         $next = $max > 0 ? $max + 1 : 1;
-        Setting::setValue('clients.next_code', $next, 'int');
+        Setting::setValue('suppliers.next_code', $next, 'int');
 
         return $next;
     }
@@ -93,11 +92,11 @@ class ClientCodeService
 
         $code = $this->parse($incoming) ?? (is_numeric($incoming) ? (int) $incoming : 0);
         if ($code <= 0) {
-            throw new InvalidArgumentException('El código de cliente debe ser un entero positivo (ej. C001).');
+            throw new InvalidArgumentException('El código de proveedor debe ser un entero positivo (ej. P001).');
         }
 
         if ($currentCode !== null && $code !== $currentCode && ! $canEditCode) {
-            throw new InvalidArgumentException('El código de cliente es inmutable salvo permiso administrativo.');
+            throw new InvalidArgumentException('El código de proveedor es inmutable salvo permiso administrativo.');
         }
 
         return $code;

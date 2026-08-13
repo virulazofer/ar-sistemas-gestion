@@ -33,18 +33,15 @@ class ClientController extends Controller
 
         $clients = Client::query()
             ->when($q !== '', function ($query) use ($q) {
-                $code = ltrim($q, '0');
-                $query->where(function ($inner) use ($q, $code) {
+                $parsed = $this->codes->parse($q);
+                $query->where(function ($inner) use ($q, $parsed) {
                     $inner->where('name', 'like', "%{$q}%")
                         ->orWhere('business_name', 'like', "%{$q}%")
                         ->orWhere('cuit', 'like', "%{$q}%")
                         ->orWhere('dni', 'like', "%{$q}%")
                         ->orWhere('email', 'like', "%{$q}%");
-                    if ($code !== '' && ctype_digit($code)) {
-                        $inner->orWhere('code', (int) $code);
-                    }
-                    if (ctype_digit($q)) {
-                        $inner->orWhere('code', (int) $q);
+                    if ($parsed !== null) {
+                        $inner->orWhere('code', $parsed);
                     }
                 });
             })
@@ -215,6 +212,13 @@ class ClientController extends Controller
             'status' => ['required', Rule::in(['active', 'inactive'])],
             'notes' => ['nullable', 'string', 'max:5000'],
         ];
+
+        if ($request->filled('code')) {
+            $parsed = $this->codes->parse($request->input('code'));
+            if ($parsed !== null) {
+                $request->merge(['code' => $parsed]);
+            }
+        }
 
         if ($ignoreId !== null && $request->user()?->can('clients.edit_code')) {
             $rules['code'] = ['nullable', 'integer', 'min:1', Rule::unique('clients', 'code')->ignore($ignoreId)];

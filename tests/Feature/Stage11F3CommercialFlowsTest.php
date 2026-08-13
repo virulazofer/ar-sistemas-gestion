@@ -88,7 +88,7 @@ test('1 código cliente único permanente y formato', function () {
 
     $c1 = Client::query()->where('name', 'DAASA TEST')->firstOrFail();
     expect($c1->code)->toBeGreaterThan(0);
-    expect($c1->codeFormatted())->toMatch('/^\d{4}$/');
+    expect($c1->codeFormatted())->toMatch('/^C\d{3,}$/');
 
     $c2 = makeClient11F3('Otro');
     expect($c2->code)->toBeGreaterThan($c1->code);

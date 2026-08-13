@@ -70,7 +70,7 @@ class Client extends Model
 
     public function codeFormatted(): string
     {
-        return $this->code ? sprintf('%04d', (int) $this->code) : '—';
+        return $this->code ? sprintf('C%03d', (int) $this->code) : '—';
     }
 
     public function labelWithCode(): string
