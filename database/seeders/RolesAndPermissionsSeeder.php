@@ -34,7 +34,8 @@ class RolesAndPermissionsSeeder extends Seeder
         $operadorNames = [
             'dashboard.view',
             'audit.view',
-            'movements.view', 'movements.create', 'movements.edit', 'movements.void', 'movements.export',
+            // 11F grilla: Operador crea/consulta; edición/anulación solo Administrador (policy + perms).
+            'movements.view', 'movements.create', 'movements.export',
             'accounts.view', 'accounts.create', 'accounts.edit',
             'exchange_rates.view', 'exchange_rates.create',
             'categories.view', 'categories.create', 'categories.edit',

@@ -8,6 +8,7 @@ use App\Models\Currency;
 use App\Models\FinancialAccount;
 use App\Models\Movement;
 use App\Models\MovementEditAudit;
+use App\Models\User;
 use App\Services\Finance\ChartStructuralMigrationService;
 use App\Services\Finance\ExchangeRateService;
 use App\Services\Finance\MovementService;
@@ -352,7 +353,7 @@ test('cambio de fecha exige fx_mode y recalcular usa rateForDate', function () {
     expect(Money::compare((string) $m2->fresh()->exchange_rate_value, '1000', 6))->toBe(0);
 });
 
-test('listado columnas y detalle muestran codigo MOV y editar', function () {
+test('listado columnas codigo primario sin Ver y detalle limpio', function () {
     $admin = makeAdmin();
     seed11fMovements();
     $this->actingAs($admin);
@@ -369,7 +370,8 @@ test('listado columnas y detalle muestran codigo MOV y editar', function () {
     ]);
 
     $index = $this->get(route('movements.index'))->assertOk()->getContent();
-    expect($index)->toContain('Fecha')
+    expect($index)->toContain('Código')
+        ->and($index)->toContain('Fecha')
         ->and($index)->toContain('Descripción')
         ->and($index)->toContain('Cuenta contable')
         ->and($index)->toContain('Ámbito')
@@ -377,11 +379,17 @@ test('listado columnas y detalle muestran codigo MOV y editar', function () {
         ->and($index)->toContain('Importe')
         ->and($index)->toContain('Origen:')
         ->and($index)->toContain($m->code)
-        ->and($index)->toContain('mov-row');
+        ->and($index)->toContain('mov-row')
+        ->and($index)->toContain('movementsGrid')
+        ->and($index)->not->toContain('>Ver</a>');
 
     $show = $this->get(route('movements.show', $m))->assertOk()->getContent();
     expect($show)->toContain($m->code)
-        ->and($show)->toContain('Editar movimiento')
+        ->and($show)->toContain('Editar')
+        ->and($show)->toContain('Historial de cambios')
+        ->and($show)->toContain('USD 1 = ARS')
+        ->and($show)->not->toContain('id interno')
+        ->and($show)->not->toContain('import_batch')
         ->and($show)->toContain('Anular movimiento');
 });
 
@@ -497,4 +505,193 @@ test('fx editado en movimiento no muta tabla exchange_rates', function () {
     expect((string) $rate->fresh()->rate)->toBe($before)
         ->and(Money::compare((string) $m->fresh()->exchange_rate_value, '1600', 6))->toBe(0)
         ->and(MovementEditAudit::query()->where('movement_id', $m->id)->where('field', 'exchange_rate_value')->exists())->toBeTrue();
+});
+
+test('admin inline edita ambito descripcion fecha cuenta e importe con motivo', function () {
+    $admin = makeAdmin();
+    seed11fMovements();
+    $this->actingAs($admin);
+    app(ExchangeRateService::class)->storeManual('1500', 't');
+    $fa = makeFa11f('Caja inline');
+    $fa2 = makeFa11f('Caja inline 2');
+    $leaf = leafChart();
+    $leaf2 = ChartAccount::query()
+        ->where('type', 'expense')
+        ->whereNotNull('parent_id')
+        ->where('is_active', true)
+        ->where('id', '!=', $leaf->id)
+        ->orderBy('id')
+        ->first() ?? $leaf;
+
+    $m = app(MovementService::class)->createSimple([
+        'type' => 'expense',
+        'scope' => 'professional',
+        'financial_account_id' => $fa->id,
+        'amount' => '2500',
+        'chart_account_id' => $leaf->id,
+        'description' => 'Tuenti Gabi',
+        'movement_date' => '2026-01-04',
+    ]);
+    $code = $m->code;
+
+    $this->patchJson(route('movements.inline', $m), [
+        'field' => 'scope',
+        'value' => 'personal',
+    ])->assertOk()->assertJsonPath('message', 'Guardado ✓');
+
+    expect($m->fresh()->scope->value)->toBe('personal')
+        ->and($m->fresh()->code)->toBe($code)
+        ->and((string) $m->fresh()->amount)->toBe('2500.00')
+        ->and((int) $m->fresh()->financial_account_id)->toBe($fa->id);
+
+    expect(MovementEditAudit::query()->where('movement_id', $m->id)->where('field', 'scope')->exists())->toBeTrue();
+
+    $this->patchJson(route('movements.inline', $m), [
+        'field' => 'description',
+        'value' => 'Tuenti Gabi corregido',
+    ])->assertOk();
+
+    $this->patchJson(route('movements.inline', $m), [
+        'field' => 'chart_account_id',
+        'value' => $leaf2->id,
+    ])->assertOk();
+
+    $this->patchJson(route('movements.inline', $m), [
+        'field' => 'movement_date',
+        'value' => '2026-01-05',
+        'fx_mode' => 'keep',
+    ])->assertOk();
+
+    $this->patchJson(route('movements.inline', $m), [
+        'field' => 'amount',
+        'value' => '2600',
+    ])->assertStatus(422);
+
+    $this->patchJson(route('movements.inline', $m), [
+        'field' => 'amount',
+        'value' => '2600',
+        'edit_reason' => 'ajuste importe smoke',
+    ])->assertOk();
+
+    $this->patchJson(route('movements.inline', $m), [
+        'field' => 'financial_account_id',
+        'value' => $fa2->id,
+        'edit_reason' => 'cambio FA smoke',
+    ])->assertOk();
+
+    expect($m->fresh()->code)->toBe($code);
+});
+
+test('operador y consulta no editan inline ni completo', function () {
+    $admin = makeAdmin();
+    seed11fMovements();
+    $this->actingAs($admin);
+    app(ExchangeRateService::class)->storeManual('1500', 't');
+    $fa = makeFa11f('Caja roles');
+    $m = app(MovementService::class)->createSimple([
+        'type' => 'expense',
+        'scope' => 'personal',
+        'financial_account_id' => $fa->id,
+        'amount' => '10',
+        'chart_account_id' => leafChart()->id,
+        'movement_date' => now()->toDateString(),
+    ]);
+
+    $operador = User::factory()->create();
+    $operador->assignRole('Operador');
+    $this->actingAs($operador)
+        ->patchJson(route('movements.inline', $m), ['field' => 'scope', 'value' => 'professional'])
+        ->assertForbidden();
+    $this->actingAs($operador)->get(route('movements.edit', $m))->assertForbidden();
+    $this->actingAs($operador)->get(route('movements.index'))->assertOk()->assertDontSee('canEdit: true');
+
+    $consulta = User::factory()->create();
+    $consulta->assignRole('Consulta');
+    $this->actingAs($consulta)
+        ->patchJson(route('movements.inline', $m), ['field' => 'description', 'value' => 'hack'])
+        ->assertForbidden();
+    $this->actingAs($consulta)->get(route('movements.edit', $m))->assertForbidden();
+    $this->actingAs($consulta)->get(route('movements.show', $m))->assertOk();
+});
+
+test('ordenamiento server-side sobre dataset filtrado antes de paginar', function () {
+    $admin = makeAdmin();
+    seed11fMovements();
+    $this->actingAs($admin);
+    app(ExchangeRateService::class)->storeManual('1500', 't');
+    $fa = makeFa11f('Caja sort');
+    $svc = app(MovementService::class);
+    $leaf = leafChart();
+
+    foreach ([['A-alpha', '10'], ['C-gamma', '30'], ['B-beta', '20']] as [$desc, $amt]) {
+        $svc->createSimple([
+            'type' => 'expense',
+            'scope' => 'personal',
+            'financial_account_id' => $fa->id,
+            'amount' => $amt,
+            'chart_account_id' => $leaf->id,
+            'description' => $desc,
+            'movement_date' => '2026-02-01',
+        ]);
+    }
+
+    // Forzar per_page=1 para verificar orden global antes de paginar
+    $page1 = $this->get(route('movements.index', [
+        'financial_account_id' => $fa->id,
+        'sort' => 'amount',
+        'dir' => 'desc',
+        'per_page' => 1,
+    ]))->assertOk()->getContent();
+    expect($page1)->toContain('C-gamma')
+        ->and($page1)->not->toContain('B-beta')
+        ->and($page1)->toContain('Importe ↓');
+
+    $page2 = $this->get(route('movements.index', [
+        'financial_account_id' => $fa->id,
+        'sort' => 'amount',
+        'dir' => 'desc',
+        'per_page' => 1,
+        'page' => 2,
+    ]))->assertOk()->getContent();
+    expect($page2)->toContain('B-beta')
+        ->and($page2)->toContain('sort=amount')
+        ->and($page2)->toContain('dir=desc');
+
+    $byDesc = $this->get(route('movements.index', [
+        'financial_account_id' => $fa->id,
+        'sort' => 'description',
+        'dir' => 'asc',
+        'per_page' => 1,
+    ]))->assertOk()->getContent();
+    expect($byDesc)->toContain('A-alpha');
+
+    $byDateAsc = $this->get(route('movements.index', [
+        'q' => 'gamma',
+        'sort' => 'date',
+        'dir' => 'asc',
+    ]))->assertOk()->getContent();
+    expect($byDateAsc)->toContain('C-gamma');
+});
+
+test('codigo MOV abre detalle y es buscable', function () {
+    $admin = makeAdmin();
+    seed11fMovements();
+    $this->actingAs($admin);
+    app(ExchangeRateService::class)->storeManual('1500', 't');
+    $fa = makeFa11f('Caja code');
+    $m = app(MovementService::class)->createSimple([
+        'type' => 'expense',
+        'scope' => 'personal',
+        'financial_account_id' => $fa->id,
+        'amount' => '7',
+        'chart_account_id' => leafChart()->id,
+        'description' => 'Buscable',
+        'movement_date' => now()->toDateString(),
+    ]);
+
+    $html = $this->get(route('movements.index', ['q' => $m->code]))->assertOk()->getContent();
+    expect($html)->toContain($m->code)
+        ->and($html)->toContain(route('movements.show', $m, false));
+
+    $this->get(route('movements.show', $m))->assertOk()->assertSee($m->code);
 });

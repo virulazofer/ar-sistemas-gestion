@@ -123,6 +123,9 @@ Route::middleware(['auth'])->group(function () {
     Route::put('/movimientos/{movement}', [MovementController::class, 'update'])
         ->middleware('permission:movements.edit')
         ->name('movements.update');
+    Route::patch('/movimientos/{movement}/inline', [MovementController::class, 'inlineUpdate'])
+        ->middleware('permission:movements.edit')
+        ->name('movements.inline');
     Route::get('/movimientos/{movement}', [MovementController::class, 'show'])
         ->middleware('permission:movements.view')
         ->name('movements.show');

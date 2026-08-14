@@ -7,6 +7,7 @@ use App\Models\User;
 
 /**
  * Política de backend: no alcanza con ocultar botones en Blade.
+ * Edición/anulación: solo Administrador (Operador y Consulta = lectura).
  */
 class MovementPolicy
 {
@@ -27,6 +28,10 @@ class MovementPolicy
 
     public function update(User $user, Movement $movement): bool
     {
+        if (! $user->hasRole('Administrador')) {
+            return false;
+        }
+
         if (! $user->can('movements.edit')) {
             return false;
         }
@@ -36,6 +41,10 @@ class MovementPolicy
 
     public function void(User $user, Movement $movement): bool
     {
+        if (! $user->hasRole('Administrador')) {
+            return false;
+        }
+
         if (! $user->can('movements.void')) {
             return false;
         }
