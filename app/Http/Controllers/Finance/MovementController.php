@@ -400,14 +400,38 @@ class MovementController extends Controller
 
     private function applyFilters(Builder $query, Request $request): void
     {
+        // Multiselect: OR dentro del filtro, AND entre filtros. Acepta escalar legacy.
+        $types = $this->multiInput($request, 'type');
+        $scopes = $this->multiInput($request, 'scope');
+        $statuses = $this->multiInput($request, 'status');
+        $chartIds = $this->multiInput($request, 'chart_account_id');
+        $faIds = $this->multiInput($request, 'financial_account_id');
+        $currencyIds = $this->multiInput($request, 'currency_id');
+        $categoryIds = $this->multiInput($request, 'category_id');
+
+        if ($types !== []) {
+            $query->whereIn('movements.type', $types);
+        }
+        if ($scopes !== []) {
+            $query->whereIn('movements.scope', $scopes);
+        }
+        if ($statuses !== []) {
+            $query->whereIn('movements.status', $statuses);
+        }
+        if ($chartIds !== []) {
+            $query->whereIn('movements.chart_account_id', array_map('intval', $chartIds));
+        }
+        if ($faIds !== []) {
+            $query->whereIn('movements.financial_account_id', array_map('intval', $faIds));
+        }
+        if ($currencyIds !== []) {
+            $query->whereIn('movements.currency_id', array_map('intval', $currencyIds));
+        }
+        if ($categoryIds !== []) {
+            $query->whereIn('movements.category_id', array_map('intval', $categoryIds));
+        }
+
         $query
-            ->when($request->filled('scope'), fn ($q) => $q->where('movements.scope', $request->string('scope')))
-            ->when($request->filled('type'), fn ($q) => $q->where('movements.type', $request->string('type')))
-            ->when($request->filled('status'), fn ($q) => $q->where('movements.status', $request->string('status')))
-            ->when($request->filled('category_id'), fn ($q) => $q->where('movements.category_id', (int) $request->input('category_id')))
-            ->when($request->filled('chart_account_id'), fn ($q) => $q->where('movements.chart_account_id', (int) $request->input('chart_account_id')))
-            ->when($request->filled('financial_account_id'), fn ($q) => $q->where('movements.financial_account_id', (int) $request->input('financial_account_id')))
-            ->when($request->filled('currency_id'), fn ($q) => $q->where('movements.currency_id', (int) $request->input('currency_id')))
             ->when($request->filled('date_from'), fn ($q) => $q->whereDate('movements.movement_date', '>=', $request->string('date_from')))
             ->when($request->filled('date_to'), fn ($q) => $q->whereDate('movements.movement_date', '<=', $request->string('date_to')));
 
@@ -433,6 +457,28 @@ class MovementController extends Controller
         }
     }
 
+    /** @return list<string> */
+    private function multiInput(Request $request, string $key): array
+    {
+        $raw = $request->input($key);
+        if ($raw === null || $raw === '') {
+            return [];
+        }
+        if (! is_array($raw)) {
+            $raw = [$raw];
+        }
+
+        $out = [];
+        foreach ($raw as $item) {
+            if ($item === null || $item === '') {
+                continue;
+            }
+            $out[] = (string) $item;
+        }
+
+        return array_values(array_unique($out));
+    }
+
     private function applySort(Builder $query, string $sort, string $dir): void
     {
         $needsChart = $sort === 'chart_account';
@@ -446,13 +492,13 @@ class MovementController extends Controller
         }
 
         match ($sort) {
-            'code' => $query->orderBy('movements.code', $dir)->orderByDesc('movements.id'),
-            'date' => $query->orderBy('movements.movement_date', $dir)->orderByDesc('movements.id'),
-            'description' => $query->orderBy('movements.description', $dir)->orderByDesc('movements.id'),
-            'chart_account' => $query->orderBy('chart_accounts.name', $dir)->orderByDesc('movements.id'),
-            'scope' => $query->orderBy('movements.scope', $dir)->orderByDesc('movements.id'),
-            'financial_account' => $query->orderBy('financial_accounts.name', $dir)->orderByDesc('movements.id'),
-            'amount' => $query->orderBy('movements.amount', $dir)->orderByDesc('movements.id'),
+            'code' => $query->orderBy('movements.code', $dir)->orderBy('movements.id', $dir),
+            'date' => $query->orderBy('movements.movement_date', $dir)->orderBy('movements.id', $dir),
+            'description' => $query->orderBy('movements.description', $dir)->orderBy('movements.id', $dir),
+            'chart_account' => $query->orderBy('chart_accounts.name', $dir)->orderBy('movements.id', $dir),
+            'scope' => $query->orderBy('movements.scope', $dir)->orderBy('movements.id', $dir),
+            'financial_account' => $query->orderBy('financial_accounts.name', $dir)->orderBy('movements.id', $dir),
+            'amount' => $query->orderBy('movements.amount', $dir)->orderBy('movements.id', $dir),
             default => $query->orderByDesc('movements.movement_date')->orderByDesc('movements.id'),
         };
     }

@@ -644,7 +644,8 @@ test('ordenamiento server-side sobre dataset filtrado antes de paginar', functio
     ]))->assertOk()->getContent();
     expect($page1)->toContain('C-gamma')
         ->and($page1)->not->toContain('B-beta')
-        ->and($page1)->toContain('Importe ↓');
+        ->and($page1)->toContain('Importe ↓')
+        ->and($page1)->toContain('Código ↕');
 
     $page2 = $this->get(route('movements.index', [
         'financial_account_id' => $fa->id,
@@ -663,7 +664,8 @@ test('ordenamiento server-side sobre dataset filtrado antes de paginar', functio
         'dir' => 'asc',
         'per_page' => 1,
     ]))->assertOk()->getContent();
-    expect($byDesc)->toContain('A-alpha');
+    expect($byDesc)->toContain('A-alpha')
+        ->and($byDesc)->toContain('Descripción ↑');
 
     $byDateAsc = $this->get(route('movements.index', [
         'q' => 'gamma',
@@ -671,6 +673,69 @@ test('ordenamiento server-side sobre dataset filtrado antes de paginar', functio
         'dir' => 'asc',
     ]))->assertOk()->getContent();
     expect($byDateAsc)->toContain('C-gamma');
+});
+
+test('filtros multiselect OR interno AND entre filtros con query string', function () {
+    $admin = makeAdmin();
+    seed11fMovements();
+    $this->actingAs($admin);
+    app(ExchangeRateService::class)->storeManual('1500', 't');
+    $faA = makeFa11f('FA multi A');
+    $faB = makeFa11f('FA multi B');
+    $svc = app(MovementService::class);
+    $leaf = leafChart();
+
+    $svc->createSimple([
+        'type' => 'expense',
+        'scope' => 'personal',
+        'financial_account_id' => $faA->id,
+        'amount' => '11',
+        'chart_account_id' => $leaf->id,
+        'description' => 'MULTI-PERS',
+        'movement_date' => '2026-03-01',
+    ]);
+    $svc->createSimple([
+        'type' => 'expense',
+        'scope' => 'professional',
+        'financial_account_id' => $faB->id,
+        'amount' => '22',
+        'chart_account_id' => $leaf->id,
+        'description' => 'MULTI-PROF',
+        'movement_date' => '2026-03-02',
+    ]);
+    $svc->createSimple([
+        'type' => 'income',
+        'scope' => 'professional',
+        'financial_account_id' => $faA->id,
+        'amount' => '33',
+        'chart_account_id' => $leaf->id,
+        'description' => 'MULTI-INC',
+        'movement_date' => '2026-03-03',
+    ]);
+
+    $orScope = $this->get(route('movements.index', [
+        'scope' => ['personal', 'professional'],
+        'financial_account_id' => [$faA->id, $faB->id],
+        'type' => ['expense'],
+        'sort' => 'description',
+        'dir' => 'asc',
+        'per_page' => 50,
+    ]))->assertOk()->getContent();
+
+    expect($orScope)->toContain('MULTI-PERS')
+        ->and($orScope)->toContain('MULTI-PROF')
+        ->and($orScope)->not->toContain('MULTI-INC')
+        ->and($orScope)->toContain('name="type[]"')
+        ->and($orScope)->toContain('name="scope[]"')
+        ->and($orScope)->toContain('Ámbito (2)');
+
+    $andType = $this->get(route('movements.index', [
+        'type' => ['income'],
+        'financial_account_id' => [$faA->id],
+        'per_page' => 50,
+    ]))->assertOk()->getContent();
+    expect($andType)->toContain('MULTI-INC')
+        ->and($andType)->not->toContain('MULTI-PERS');
 });
 
 test('codigo MOV abre detalle y es buscable', function () {

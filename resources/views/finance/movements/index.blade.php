@@ -20,13 +20,33 @@
         };
         $sortMark = function (string $col) use ($sort, $dir) {
             if ($sort !== $col) {
-                return '';
+                return ' ↕';
             }
             return $dir === 'asc' ? ' ↑' : ' ↓';
         };
+        $sel = function (string $key) {
+            $raw = request()->input($key, []);
+            if (! is_array($raw)) {
+                $raw = $raw === null || $raw === '' ? [] : [$raw];
+            }
+            return array_map('strval', $raw);
+        };
+        $selType = $sel('type');
+        $selScope = $sel('scope');
+        $selStatus = $sel('status');
+        $selFa = $sel('financial_account_id');
+        $selCur = $sel('currency_id');
+        $selChart = $sel('chart_account_id');
+        $countLabel = function (array $selected, string $empty) {
+            $n = count($selected);
+            if ($n === 0) {
+                return $empty;
+            }
+            return $empty.' ('.$n.')';
+        };
     @endphp
 
-    <form class="mb-4 flex flex-wrap items-end gap-2" method="GET">
+    <form class="mb-4 flex flex-wrap items-end gap-2" method="GET" id="mov-filters">
         <input type="hidden" name="sort" value="{{ $sort }}">
         <input type="hidden" name="dir" value="{{ $dir }}">
         <div>
@@ -41,66 +61,140 @@
             <label class="ar-label text-xs" for="date_to">Hasta</label>
             <input id="date_to" type="date" name="date_to" class="ar-input w-auto" value="{{ request('date_to') }}">
         </div>
-        <div>
-            <label class="ar-label text-xs" for="scope">Ámbito</label>
-            <select id="scope" name="scope" class="ar-input w-auto">
-                <option value="">Ámbito</option>
-                <option value="personal" @selected(request('scope')==='personal')>Personal</option>
-                <option value="professional" @selected(request('scope')==='professional')>Profesional</option>
-                <option value="financial" @selected(request('scope')==='financial')>Financiero</option>
-                <option value="mixed" @selected(request('scope')==='mixed')>Mixto</option>
-            </select>
-        </div>
-        <div>
-            <label class="ar-label text-xs" for="type">Tipo</label>
-            <select id="type" name="type" class="ar-input w-auto">
-                <option value="">Tipo</option>
+
+        <div class="mov-ms" x-data="{ open: false }">
+            <span class="ar-label text-xs">Tipo</span>
+            <button type="button" class="ar-input mov-ms-btn" @click="open = !open" :aria-expanded="open">
+                {{ $countLabel($selType, 'Tipo') }}
+            </button>
+            <div class="mov-ms-panel" x-show="open" x-cloak @click.outside="open = false">
                 @foreach (config('finance.movement_types') as $value => $label)
-                    <option value="{{ $value }}" @selected(request('type')===$value)>{{ $label }}</option>
+                    <label class="mov-ms-item">
+                        <input type="checkbox" name="type[]" value="{{ $value }}" @checked(in_array((string) $value, $selType, true))>
+                        <span>{{ $label }}</span>
+                    </label>
                 @endforeach
-            </select>
+            </div>
         </div>
-        <div>
-            <label class="ar-label text-xs" for="status">Estado</label>
-            <select id="status" name="status" class="ar-input w-auto">
-                <option value="">Estado</option>
-                <option value="posted" @selected(request('status')==='posted')>Confirmado</option>
-                <option value="voided" @selected(request('status')==='voided')>Anulado</option>
-            </select>
+
+        <div class="mov-ms" x-data="{ open: false }">
+            <span class="ar-label text-xs">Ámbito / Origen</span>
+            <button type="button" class="ar-input mov-ms-btn" @click="open = !open" :aria-expanded="open">
+                {{ $countLabel($selScope, 'Ámbito') }}
+            </button>
+            <div class="mov-ms-panel" x-show="open" x-cloak @click.outside="open = false">
+                @foreach (['personal' => 'Personal', 'professional' => 'Profesional', 'financial' => 'Financiero', 'mixed' => 'Mixto'] as $value => $label)
+                    <label class="mov-ms-item">
+                        <input type="checkbox" name="scope[]" value="{{ $value }}" @checked(in_array($value, $selScope, true))>
+                        <span>{{ $label }}</span>
+                    </label>
+                @endforeach
+            </div>
         </div>
-        <div>
-            <label class="ar-label text-xs" for="financial_account_id">Cuenta financiera</label>
-            <select id="financial_account_id" name="financial_account_id" class="ar-input w-auto">
-                <option value="">Todas</option>
+
+        <div class="mov-ms" x-data="{ open: false }">
+            <span class="ar-label text-xs">Estado</span>
+            <button type="button" class="ar-input mov-ms-btn" @click="open = !open" :aria-expanded="open">
+                {{ $countLabel($selStatus, 'Estado') }}
+            </button>
+            <div class="mov-ms-panel" x-show="open" x-cloak @click.outside="open = false">
+                <label class="mov-ms-item">
+                    <input type="checkbox" name="status[]" value="posted" @checked(in_array('posted', $selStatus, true))>
+                    <span>Confirmado</span>
+                </label>
+                <label class="mov-ms-item">
+                    <input type="checkbox" name="status[]" value="voided" @checked(in_array('voided', $selStatus, true))>
+                    <span>Anulado</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="mov-ms" x-data="{ open: false }">
+            <span class="ar-label text-xs">Cuenta financiera</span>
+            <button type="button" class="ar-input mov-ms-btn" @click="open = !open" :aria-expanded="open">
+                {{ $countLabel($selFa, 'FA') }}
+            </button>
+            <div class="mov-ms-panel" x-show="open" x-cloak @click.outside="open = false">
                 @foreach ($accounts as $account)
-                    <option value="{{ $account->id }}" @selected((string) request('financial_account_id') === (string) $account->id)>
-                        {{ $account->name }}
-                    </option>
+                    <label class="mov-ms-item">
+                        <input type="checkbox" name="financial_account_id[]" value="{{ $account->id }}" @checked(in_array((string) $account->id, $selFa, true))>
+                        <span>{{ $account->name }}</span>
+                    </label>
                 @endforeach
-            </select>
+            </div>
         </div>
-        <div>
-            <label class="ar-label text-xs" for="currency_id">Moneda</label>
-            <select id="currency_id" name="currency_id" class="ar-input w-auto">
-                <option value="">Todas</option>
+
+        <div class="mov-ms" x-data="{ open: false }">
+            <span class="ar-label text-xs">Moneda</span>
+            <button type="button" class="ar-input mov-ms-btn" @click="open = !open" :aria-expanded="open">
+                {{ $countLabel($selCur, 'Moneda') }}
+            </button>
+            <div class="mov-ms-panel" x-show="open" x-cloak @click.outside="open = false">
                 @foreach ($currencies as $currency)
-                    <option value="{{ $currency->id }}" @selected((string) request('currency_id') === (string) $currency->id)>
-                        {{ $currency->code }}
-                    </option>
+                    <label class="mov-ms-item">
+                        <input type="checkbox" name="currency_id[]" value="{{ $currency->id }}" @checked(in_array((string) $currency->id, $selCur, true))>
+                        <span>{{ $currency->code }}</span>
+                    </label>
                 @endforeach
-            </select>
+            </div>
         </div>
-        <div>
-            <label class="ar-label text-xs" for="chart_account_id">Cuenta contable</label>
-            <select id="chart_account_id" name="chart_account_id" class="ar-input w-auto max-w-xs">
-                <option value="">Todas</option>
-                @foreach ($conceptsPayload as $c)
-                    <option value="{{ $c['id'] }}" @selected((string) request('chart_account_id') === (string) $c['id'])>
-                        {{ $c['path'] }}
-                    </option>
-                @endforeach
-            </select>
+
+        <div
+            class="mov-ms mov-ms-wide"
+            x-data="{
+                open: false,
+                q: '',
+                concepts: {{ \Illuminate\Support\Js::from($conceptsPayload) }},
+                selected: {{ \Illuminate\Support\Js::from($selChart) }},
+                filtered() {
+                    const qq = (this.q || '').trim().toLowerCase();
+                    const selectedSet = new Set(this.selected.map(String));
+                    const match = (c) => !qq
+                        || (c.path || '').toLowerCase().includes(qq)
+                        || (c.name || '').toLowerCase().includes(qq)
+                        || (c.code || '').toLowerCase().includes(qq);
+                    const picked = this.concepts.filter(c => selectedSet.has(String(c.id)));
+                    const rest = this.concepts.filter(c => !selectedSet.has(String(c.id)) && match(c)).slice(0, 80);
+                    return [...picked, ...rest];
+                },
+                label() {
+                    const n = this.selected.length;
+                    return n ? ('Cuenta contable (' + n + ')') : 'Cuenta contable';
+                }
+            }"
+        >
+            <span class="ar-label text-xs">Cuenta contable</span>
+            <button type="button" class="ar-input mov-ms-btn" @click="open = !open" x-text="label()" :aria-expanded="open"></button>
+            <div class="mov-ms-panel" x-show="open" x-cloak @click.outside="open = false">
+                <input type="search" class="ar-input mov-ms-search" placeholder="Buscar cuenta…" x-model="q" @click.stop>
+                <template x-for="c in filtered()" :key="c.id">
+                    <label class="mov-ms-item">
+                        <input
+                            type="checkbox"
+                            name="chart_account_id[]"
+                            :value="String(c.id)"
+                            :checked="selected.includes(String(c.id))"
+                            @change="
+                                const v = String(c.id);
+                                if ($event.target.checked) {
+                                    if (!selected.includes(v)) selected.push(v);
+                                } else {
+                                    selected = selected.filter(x => x !== v);
+                                }
+                            "
+                        >
+                        <span x-text="c.path || c.name"></span>
+                    </label>
+                </template>
+                <template x-if="filtered().length === 0">
+                    <p class="ar-muted px-2 py-1 text-xs">Sin coincidencias</p>
+                </template>
+                <template x-for="id in selected.filter(sid => !filtered().some(c => String(c.id) === sid))" :key="'hid-'+id">
+                    <input type="hidden" name="chart_account_id[]" :value="id">
+                </template>
+            </div>
         </div>
+
         <div>
             <label class="ar-label text-xs" for="per_page">Por página</label>
             <select id="per_page" name="per_page" class="ar-input w-auto">
@@ -155,7 +249,7 @@
                             </a>
                         </td>
                         <td
-                            class="mov-cell"
+                            class="mov-cell {{ $canInlineEdit && $row['editable'] ? 'mov-cell-editable' : '' }}"
                             :class="cellClass({{ (int) $row['id'] }}, 'movement_date')"
                             data-field="movement_date"
                             @click.stop="startEdit({{ \Illuminate\Support\Js::from($row) }}, 'movement_date', $event)"
@@ -177,7 +271,7 @@
                             <span class="mov-err" x-show="errorFor({{ (int) $row['id'] }}, 'movement_date')" x-text="errorFor({{ (int) $row['id'] }}, 'movement_date')" x-cloak></span>
                         </td>
                         <td
-                            class="mov-cell"
+                            class="mov-cell {{ $canInlineEdit && $row['is_posted'] ? 'mov-cell-editable' : '' }}"
                             :class="cellClass({{ (int) $row['id'] }}, 'description')"
                             data-field="description"
                             @click.stop="startEdit({{ \Illuminate\Support\Js::from($row) }}, 'description', $event)"
@@ -193,18 +287,25 @@
                                 >
                             </template>
                             <template x-if="!isEditing({{ (int) $row['id'] }}, 'description')">
-                                <a
-                                    :href="@js($row['show_url'])"
-                                    class="mov-desc-link"
-                                    @click.stop
-                                    x-text="displayOf({{ (int) $row['id'] }}, 'description', @js($row['description'] ?: '—'))"
-                                ></a>
+                                @if ($canInlineEdit)
+                                    <span
+                                        class="mov-desc-editable"
+                                        x-text="displayOf({{ (int) $row['id'] }}, 'description', @js($row['description'] ?: '—'))"
+                                    ></span>
+                                @else
+                                    <a
+                                        href="{{ $row['show_url'] }}"
+                                        class="mov-desc-link"
+                                        @click.stop
+                                        x-text="displayOf({{ (int) $row['id'] }}, 'description', @js($row['description'] ?: '—'))"
+                                    ></a>
+                                @endif
                             </template>
                             <span class="mov-saved" x-show="savedFlash[{{ (int) $row['id'] }}] === 'description'" x-cloak>Guardado ✓</span>
                             <span class="mov-err" x-show="errorFor({{ (int) $row['id'] }}, 'description')" x-text="errorFor({{ (int) $row['id'] }}, 'description')" x-cloak></span>
                         </td>
                         <td
-                            class="mov-cell text-xs"
+                            class="mov-cell text-xs {{ $canInlineEdit && $row['editable'] ? 'mov-cell-editable' : '' }}"
                             :class="cellClass({{ (int) $row['id'] }}, 'chart_account_id')"
                             data-field="chart_account_id"
                             @click.stop="startEdit({{ \Illuminate\Support\Js::from($row) }}, 'chart_account_id', $event)"
@@ -242,7 +343,7 @@
                             <span class="mov-err" x-show="errorFor({{ (int) $row['id'] }}, 'chart_account_id')" x-text="errorFor({{ (int) $row['id'] }}, 'chart_account_id')" x-cloak></span>
                         </td>
                         <td
-                            class="mov-cell"
+                            class="mov-cell {{ $canInlineEdit && $row['editable'] ? 'mov-cell-editable' : '' }}"
                             :class="cellClass({{ (int) $row['id'] }}, 'scope')"
                             data-field="scope"
                             @click.stop="startEdit({{ \Illuminate\Support\Js::from($row) }}, 'scope', $event)"
@@ -268,7 +369,7 @@
                             <span class="mov-err" x-show="errorFor({{ (int) $row['id'] }}, 'scope')" x-text="errorFor({{ (int) $row['id'] }}, 'scope')" x-cloak></span>
                         </td>
                         <td
-                            class="mov-cell"
+                            class="mov-cell {{ $canInlineEdit && $row['editable'] ? 'mov-cell-editable' : '' }}"
                             :class="cellClass({{ (int) $row['id'] }}, 'financial_account_id')"
                             data-field="financial_account_id"
                             @click.stop="startEdit({{ \Illuminate\Support\Js::from($row) }}, 'financial_account_id', $event)"
@@ -294,7 +395,7 @@
                             <span class="mov-err" x-show="errorFor({{ (int) $row['id'] }}, 'financial_account_id')" x-text="errorFor({{ (int) $row['id'] }}, 'financial_account_id')" x-cloak></span>
                         </td>
                         <td
-                            class="mov-cell text-right {{ $row['amount_class'] }}"
+                            class="mov-cell text-right {{ $row['amount_class'] }} {{ $canInlineEdit && $row['editable'] ? 'mov-cell-editable' : '' }}"
                             :class="cellClass({{ (int) $row['id'] }}, 'amount')"
                             data-field="amount"
                             @click.stop="startEdit({{ \Illuminate\Support\Js::from($row) }}, 'amount', $event)"
@@ -377,15 +478,36 @@
     <div class="mt-4">{{ $movements->links() }}</div>
 
     <style>
-        .mov-sort { color: inherit; text-decoration: none; font-weight: 600; }
+        .mov-sort { color: inherit; text-decoration: none; font-weight: 600; white-space: nowrap; }
         .mov-sort:hover { color: var(--ar-brand); }
         .mov-code-link { color: var(--ar-brand); font-weight: 600; text-decoration: none; }
         .mov-code-link:hover { text-decoration: underline; }
         .mov-desc-link { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+        .mov-desc-editable { display: inline-block; min-width: 4rem; }
         .mov-row:hover { background: var(--ar-surface-2, rgba(0,0,0,.04)); }
         .mov-row-editing { background: var(--ar-surface-2, rgba(0,0,0,.06)); }
         .mov-cell { position: relative; min-width: 7rem; }
-        .mov-cell-editable { cursor: cell; }
+        .mov-cell-editable {
+            cursor: cell;
+            outline: 1px dashed transparent;
+            outline-offset: -2px;
+            border-radius: 2px;
+            transition: background .12s ease, outline-color .12s ease;
+        }
+        .mov-cell-editable:hover {
+            background: rgba(14, 116, 144, 0.08);
+            outline-color: var(--ar-brand, #0e7490);
+        }
+        .mov-cell-editable:hover::after {
+            content: '✎';
+            position: absolute;
+            top: 2px;
+            right: 4px;
+            font-size: .65rem;
+            opacity: .55;
+            color: var(--ar-brand, #0e7490);
+            pointer-events: none;
+        }
         .mov-editor { min-width: 8rem; padding: .25rem .4rem; font-size: .875rem; }
         .mov-saved { display: block; font-size: .7rem; color: var(--ar-success, #15803d); margin-top: .15rem; }
         .mov-err { display: block; font-size: .7rem; color: var(--ar-danger); margin-top: .15rem; }
@@ -403,14 +525,34 @@
             background: var(--ar-surface, #fff); border: 1px solid var(--ar-border);
             border-radius: .5rem; padding: 1.25rem;
         }
+        .mov-ms { position: relative; min-width: 9rem; }
+        .mov-ms-wide { min-width: 14rem; }
+        .mov-ms-btn {
+            display: block; width: 100%; text-align: left; cursor: pointer;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .mov-ms-panel {
+            position: absolute; z-index: 45; left: 0; min-width: 14rem; max-width: 22rem;
+            max-height: 16rem; overflow: auto; margin-top: .2rem;
+            border: 1px solid var(--ar-border); border-radius: .35rem;
+            background: var(--ar-surface, #fff); padding: .35rem; box-shadow: 0 8px 20px rgba(0,0,0,.08);
+        }
+        .mov-ms-search { width: 100%; margin-bottom: .35rem; }
+        .mov-ms-item {
+            display: flex; align-items: flex-start; gap: .45rem;
+            padding: .3rem .35rem; font-size: .85rem; cursor: pointer;
+        }
+        .mov-ms-item:hover { background: var(--ar-surface-2, #f3f4f6); }
         @media (max-width: 767px) {
             .mov-grid .mov-cell-editable { cursor: default; }
+            .mov-grid .mov-cell-editable:hover { background: transparent; outline-color: transparent; }
+            .mov-grid .mov-cell-editable:hover::after { content: none; }
             .mov-grid .mov-editor, .mov-grid .mov-omnibox { display: none !important; }
         }
     </style>
 
     <script>
-        function movementsGrid(cfg) {
+        window.movementsGrid = function movementsGrid(cfg) {
             const sensitive = new Set(['amount', 'financial_account_id']);
             const isMobile = () => window.matchMedia('(max-width: 767px)').matches;
 

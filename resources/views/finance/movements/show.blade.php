@@ -10,6 +10,11 @@
                 @can('update', $movement)
                     <a href="{{ route('movements.edit', $movement) }}" class="ar-btn ar-btn-primary">Editar</a>
                 @endcan
+                @if ($movement->isPosted())
+                    @can('void', $movement)
+                        <a href="#anular-movimiento" class="ar-btn ar-btn-secondary" style="border-color: var(--ar-danger); color: var(--ar-danger);">Anular</a>
+                    @endcan
+                @endif
             </div>
         </div>
     </x-slot>
@@ -167,7 +172,7 @@
 
     @if ($movement->isPosted())
         @can('void', $movement)
-            <form method="POST" action="{{ route('movements.void', $movement) }}" class="ar-card mt-4 max-w-xl space-y-3 p-5">
+            <form id="anular-movimiento" method="POST" action="{{ route('movements.void', $movement) }}" class="ar-card mt-4 max-w-xl space-y-3 p-5">
                 @csrf
                 <h2 class="font-semibold">Anular movimiento</h2>
                 <p class="ar-muted text-sm">La anulación es distinta de la edición: usala cuando la operación no debía existir. Requiere motivo.</p>
