@@ -418,26 +418,27 @@
                 'adm' => $sidebarActiveGroup === 'adm',
             ];
         @endphp
+        {{-- x-data con comillas simples: @js() emite JSON con " y no debe romper el atributo HTML. --}}
         <div
             class="ar-shell-app"
             data-sidebar-active="{{ $sidebarActiveGroup ?? '' }}"
-            x-data="{
-                collapsed: localStorage.getItem('ar-sidebar-collapsed') === '1',
+            x-data='{
+                collapsed: localStorage.getItem("ar-sidebar-collapsed") === "1",
                 drawer: false,
                 groups: @js($sidebarGroups),
                 toggleCollapse() {
                     this.collapsed = !this.collapsed;
-                    localStorage.setItem('ar-sidebar-collapsed', this.collapsed ? '1' : '0');
+                    localStorage.setItem("ar-sidebar-collapsed", this.collapsed ? "1" : "0");
                 },
                 toggleGroup(key) {
                     if (this.collapsed && window.innerWidth >= 1024) {
                         this.collapsed = false;
-                        localStorage.setItem('ar-sidebar-collapsed', '0');
+                        localStorage.setItem("ar-sidebar-collapsed", "0");
                     }
                     this.groups = Object.assign({}, this.groups, { [key]: !this.groups[key] });
                 },
                 closeDrawer() { this.drawer = false; }
-            }"
+            }'
             :class="{ 'is-collapsed': collapsed }"
         >
             @include('layouts.navigation')
@@ -489,7 +490,7 @@
                 </main>
             </div>
 
-            <div class="ar-drawer-overlay lg:hidden" x-show="drawer" x-cloak @click="closeDrawer()"></div>
+            <div class="ar-drawer-overlay lg:hidden" x-show="drawer" x-cloak style="display: none;" @click="closeDrawer()"></div>
         </div>
     </body>
 </html>

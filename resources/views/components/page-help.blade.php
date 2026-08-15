@@ -6,59 +6,72 @@
 @endphp
 
 @if (is_array($help))
+    {{--
+      Defensa anti-regresión: el overlay NUNCA debe verse sin click en "? Ayuda".
+      - open siempre inicia en false (sin localStorage / sin onboarding).
+      - Contenido en <template x-teleport>: sin Alpine el <template> no se pinta
+        (un div x-show suelto sí podía dejar el velo gris si fallaba Alpine/x-cloak).
+      - style="display:none" + x-cloak: capa extra si Alpine arranca a medias.
+    --}}
     <div
         class="inline-flex"
-        x-data="{ open: false }"
-        @keydown.escape.window="open = false"
+        x-data="pageHelp"
+        @keydown.escape.window="close()"
     >
         <button
             type="button"
             class="ar-btn ar-btn-secondary text-xs"
-            @click="open = true"
+            @click="openHelp()"
             aria-haspopup="dialog"
             :aria-expanded="open.toString()"
         >
             ? Ayuda
         </button>
 
-        <div
-            x-show="open"
-            x-cloak
-            class="fixed inset-0 z-50 {{ $side ? 'flex justify-end bg-black/40' : 'flex items-end justify-center bg-black/40 p-4 sm:items-center' }}"
-            @click.self="open = false"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Ayuda de {{ $help['title'] ?? $topic }}"
-        >
-            <div class="ar-card {{ $side ? 'h-full max-h-full w-full max-w-md rounded-none border-y-0 border-e-0' : 'max-h-[85vh] w-full max-w-lg' }} overflow-y-auto p-5 shadow-lg" @click.stop>
-                <div class="mb-3 flex items-start justify-between gap-3">
-                    <div>
-                        <h2 class="text-lg font-semibold">{{ $help['title'] ?? 'Ayuda' }}</h2>
-                        @if (!empty($help['summary']))
-                            <p class="ar-muted mt-1 text-sm">{{ $help['summary'] }}</p>
-                        @endif
+        <template x-teleport="body">
+            <div
+                x-show="open"
+                x-cloak
+                style="display: none;"
+                class="fixed inset-0 z-[80] {{ $side ? 'flex justify-end bg-black/40' : 'flex items-end justify-center bg-black/40 p-4 sm:items-center' }}"
+                @click.self="close()"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Ayuda de {{ $help['title'] ?? $topic }}"
+            >
+                <div
+                    class="ar-card {{ $side ? 'h-full max-h-full w-full max-w-md rounded-none border-y-0 border-e-0' : 'max-h-[85vh] w-full max-w-lg' }} overflow-y-auto p-5 shadow-lg"
+                    @click.stop
+                >
+                    <div class="mb-3 flex items-start justify-between gap-3">
+                        <div>
+                            <h2 class="text-lg font-semibold">{{ $help['title'] ?? 'Ayuda' }}</h2>
+                            @if (!empty($help['summary']))
+                                <p class="ar-muted mt-1 text-sm">{{ $help['summary'] }}</p>
+                            @endif
+                        </div>
+                        <button type="button" class="ar-btn ar-btn-secondary text-xs" @click="close()">Cerrar</button>
                     </div>
-                    <button type="button" class="ar-btn ar-btn-secondary text-xs" @click="open = false">Cerrar</button>
+
+                    @if (!empty($help['bullets']) && is_array($help['bullets']))
+                        <ul class="mb-3 list-disc space-y-1 ps-5 text-sm">
+                            @foreach ($help['bullets'] as $bullet)
+                                <li>{{ $bullet }}</li>
+                            @endforeach
+                        </ul>
+                    @endif
+
+                    @if (!empty($help['flow']))
+                        <p class="rounded-md border border-[var(--ar-border)] bg-[var(--ar-surface-2)] p-3 text-sm">
+                            <span class="font-semibold">Flujo típico:</span> {{ $help['flow'] }}
+                        </p>
+                    @endif
+
+                    @if (!empty($help['diagram']))
+                        <pre class="mt-3 overflow-x-auto rounded-md border border-[var(--ar-border)] bg-[var(--ar-surface-2)] p-3 text-xs leading-relaxed">{{ $help['diagram'] }}</pre>
+                    @endif
                 </div>
-
-                @if (!empty($help['bullets']) && is_array($help['bullets']))
-                    <ul class="mb-3 list-disc space-y-1 ps-5 text-sm">
-                        @foreach ($help['bullets'] as $bullet)
-                            <li>{{ $bullet }}</li>
-                        @endforeach
-                    </ul>
-                @endif
-
-                @if (!empty($help['flow']))
-                    <p class="rounded-md border border-[var(--ar-border)] bg-[var(--ar-surface-2)] p-3 text-sm">
-                        <span class="font-semibold">Flujo típico:</span> {{ $help['flow'] }}
-                    </p>
-                @endif
-
-                @if (!empty($help['diagram']))
-                    <pre class="mt-3 overflow-x-auto rounded-md border border-[var(--ar-border)] bg-[var(--ar-surface-2)] p-3 text-xs leading-relaxed">{{ $help['diagram'] }}</pre>
-                @endif
             </div>
-        </div>
+        </template>
     </div>
 @endif

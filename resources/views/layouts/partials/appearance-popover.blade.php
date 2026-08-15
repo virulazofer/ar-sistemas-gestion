@@ -2,57 +2,23 @@
     use App\Support\Appearance;
     $mode = Appearance::normalizeMode(auth()->user()->theme);
     $palette = auth()->user()->appearancePalette();
+    $appearanceInit = [
+        'mode' => $mode,
+        'palette' => $palette,
+        'palettes' => Appearance::palettes(),
+    ];
 @endphp
+{{-- Atributo con comillas simples: @js() usa " y no rompe el HTML/Alpine. open siempre false (no se persiste). --}}
 <div
     class="relative"
-    x-data="{
-        open: false,
-        mode: @js($mode),
-        palette: @js($palette),
-        applyPreview() {
-            const root = document.documentElement;
-            root.classList.toggle('dark', this.mode === 'dark');
-            root.setAttribute('data-palette', this.palette);
-            this.$refs.themeForm?.querySelectorAll('[data-appearance-choice]').forEach((el) => {
-                const input = el.querySelector('input[type=radio]');
-                if (! input) return;
-                const selected = input.checked;
-                el.classList.toggle('is-selected', selected);
-                el.setAttribute('aria-checked', selected ? 'true' : 'false');
-            });
-        },
-        selectMode(value) {
-            this.mode = value;
-            this.$nextTick(() => { this.applyPreview(); this.$refs.themeForm?.requestSubmit(); });
-        },
-        selectPalette(value) {
-            this.palette = value;
-            this.$nextTick(() => { this.applyPreview(); this.$refs.themeForm?.requestSubmit(); });
-        },
-        onChoiceKey(e, group, value) {
-            const order = group === 'mode' ? ['light', 'dark'] : @js(Appearance::palettes());
-            const idx = order.indexOf(value);
-            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                e.preventDefault();
-                const next = order[(idx + 1) % order.length];
-                group === 'mode' ? this.selectMode(next) : this.selectPalette(next);
-            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                e.preventDefault();
-                const prev = order[(idx - 1 + order.length) % order.length];
-                group === 'mode' ? this.selectMode(prev) : this.selectPalette(prev);
-            } else if (e.key === ' ' || e.key === 'Enter') {
-                e.preventDefault();
-                group === 'mode' ? this.selectMode(value) : this.selectPalette(value);
-            }
-        }
-    }"
-    @keydown.escape.window="open = false"
-    @click.outside="open = false"
+    x-data='appearancePopover(@js($appearanceInit))'
+    @keydown.escape.window="close()"
+    @click.outside="close()"
 >
     <button
         type="button"
         class="ar-btn ar-btn-secondary text-xs"
-        @click="open = !open"
+        @click="toggle()"
         :aria-expanded="open.toString()"
         aria-haspopup="dialog"
     >
@@ -62,6 +28,7 @@
     <div
         x-show="open"
         x-cloak
+        style="display: none;"
         class="ar-appearance-popover absolute right-0 z-50 mt-2 w-72 p-3"
         role="dialog"
         aria-label="Preferencias de apariencia"
