@@ -52,6 +52,16 @@ test('drawer overlay inicia oculto en markup', function () {
         ->and($html)->toMatch('/ar-drawer-overlay[^>]*style="display: none;"/');
 });
 
+test('shell sidebar x-data no se rompe con @js y no filtra JS al DOM', function () {
+    $admin = makeAdmin();
+    $html = $this->actingAs($admin)->get(route('dashboard'))->assertOk()->getContent();
+
+    expect($html)->toMatch('/class="ar-shell-app"[\s\S]*?x-data="\{[\s\S]*?closeDrawer\(\) \{ this\.drawer = false; \}[\s\S]*?\}"/')
+        ->and($html)->toContain("groups: JSON.parse('")
+        ->and($html)->not->toContain("x-data='{")
+        ->and($html)->not->toMatch('/closeDrawer\(\) \{ this\.drawer = false; \}\s*\}\'\s*:class=/');
+});
+
 test('service worker cache version bump recovery help overlay', function () {
     $sw = file_get_contents(public_path('sw.js'));
     expect($sw)->toContain('ar-static-v12a-2-help-overlay')
