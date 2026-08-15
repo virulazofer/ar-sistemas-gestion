@@ -14,3 +14,6 @@ Schedule::command('exchange-rates:update')->hourly()->withoutOverlapping();
 
 // Cargos de abonos activos vencidos (idempotente por período).
 Schedule::command('subscriptions:generate')->daily()->withoutOverlapping();
+
+// Temporales de captura documental (34B).
+Schedule::command('documents:cleanup-temp')->daily()->withoutOverlapping();

@@ -8,6 +8,13 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
+        <meta name="theme-color" content="#0f4c5c">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-title" content="AR Sistemas">
+        <link rel="manifest" href="/manifest.webmanifest">
+        <link rel="apple-touch-icon" href="/icons/icon-192.png">
+        <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 
         <title>@yield('title', config('app.name', 'AR Sistemas - Gestión'))</title>
 
@@ -354,11 +361,21 @@
         </style>
     </head>
     <body class="antialiased">
+        <div
+            id="ar-offline-banner"
+            hidden
+            aria-hidden="true"
+            class="fixed inset-x-0 top-0 z-[70] px-3 py-2 text-center text-sm font-medium"
+            style="background: color-mix(in srgb, var(--ar-warning, #b45309) 90%, #000); color: #fff;"
+        >
+            Sin conexión. Las operaciones que modifican datos requieren conexión.
+        </div>
         @php
             $sidebarActiveGroup = match (true) {
                 request()->routeIs('movements.quick*')
                     || request()->routeIs('dashboard.operations*')
-                    || request()->routeIs('dashboard') => 'inicio',
+                    || request()->routeIs('dashboard')
+                    || request()->routeIs('documents.*') => 'inicio',
                 request()->routeIs('clients.*')
                     || request()->routeIs('suppliers.*')
                     || request()->routeIs('products.*')

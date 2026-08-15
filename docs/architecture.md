@@ -61,6 +61,7 @@ Nombre visible: **AR Sistemas - Gestión**
 | Presupuesto | Comercial; sin efectos hasta conversión+confirmación |
 | Venta | Confirmación atómica; pago vía ClientLedgerService |
 | Home | Carga rápida de movimiento (no dashboard financiero) |
+| Documentos 12A | Captura PWA privada; sin OCR; retención 34B preparada |
 | Importaciones | Preview obligatorio; rollback por `import_batch_id` |
 | Tenancy | Single-tenant |
 | Frontend | Alpine.js; sin Livewire salvo justificación |

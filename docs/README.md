@@ -19,6 +19,8 @@ Aplicación web de gestión personal y profesional IT.
 - [Reportes / Importaciones](reports-imports.md)
 - [11E Pendientes de carga (futuro)](stage11e-pendientes-de-carga.md)
 - [Validación MySQL](mysql-validation.md)
+- [Documentos / PWA 12A](documents-pwa.md)
+- [Security review 12A](stage12a-security-review.md)
 - [Scheduler](scheduler.md)
 - [Permisos](permissions.md)
 - [FIFO / stock futuro](fifo-inventory-design.md)

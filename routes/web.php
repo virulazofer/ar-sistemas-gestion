@@ -13,6 +13,7 @@ use App\Http\Controllers\Inventory\StockController;
 use App\Http\Controllers\Purchases\PurchaseController;
 use App\Http\Controllers\Dashboard\ManagementDashboardController;
 use App\Http\Controllers\Dashboard\OperationsDashboardController;
+use App\Http\Controllers\Documents\DocumentController;
 use App\Http\Controllers\Imports\HistoricalImportController;
 use App\Http\Controllers\Imports\ImportController;
 use App\Http\Controllers\Quotations\QuotationController;
@@ -47,6 +48,27 @@ Route::get('/', function () {
         : redirect()->route('login');
 });
 
+Route::get('/manifest.webmanifest', function () {
+    $path = public_path('manifest.webmanifest');
+    abort_unless(is_file($path), 404);
+
+    return response(file_get_contents($path), 200, [
+        'Content-Type' => 'application/manifest+json; charset=utf-8',
+        'Cache-Control' => 'public, max-age=3600',
+    ]);
+})->name('pwa.manifest');
+
+Route::get('/sw.js', function () {
+    $path = public_path('sw.js');
+    abort_unless(is_file($path), 404);
+
+    return response(file_get_contents($path), 200, [
+        'Content-Type' => 'application/javascript; charset=utf-8',
+        'Service-Worker-Allowed' => '/',
+        'Cache-Control' => 'no-cache',
+    ]);
+})->name('pwa.sw');
+
 Route::middleware(['auth'])->group(function () {
     Route::get('/dashboard', DashboardController::class)
         ->middleware('permission:dashboard.view')
@@ -64,6 +86,29 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('/buscar', GlobalSearchController::class)
         ->name('search');
+
+    // Documentos capturados (12A) — storage privado + stream authz
+    Route::get('/documentos', [DocumentController::class, 'index'])
+        ->middleware('permission:documents.view')
+        ->name('documents.index');
+    Route::get('/documentos/capturar', [DocumentController::class, 'captureForm'])
+        ->middleware('permission:documents.create')
+        ->name('documents.capture');
+    Route::post('/documentos', [DocumentController::class, 'store'])
+        ->middleware('permission:documents.create')
+        ->name('documents.store');
+    Route::get('/documentos/{document}', [DocumentController::class, 'show'])
+        ->middleware('permission:documents.view')
+        ->name('documents.show');
+    Route::get('/documentos/{document}/archivo', [DocumentController::class, 'stream'])
+        ->middleware('permission:documents.view')
+        ->name('documents.stream');
+    Route::put('/documentos/{document}', [DocumentController::class, 'update'])
+        ->middleware('permission:documents.edit')
+        ->name('documents.update');
+    Route::delete('/documentos/{document}', [DocumentController::class, 'destroy'])
+        ->middleware('permission:documents.delete')
+        ->name('documents.destroy');
 
     Route::get('/reportes', [ReportController::class, 'index'])
         ->middleware('permission:reports.view')

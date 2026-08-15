@@ -6,6 +6,7 @@ Definido en `routes/console.php`.
 |---------|------------|-----------|
 | `php artisan exchange-rates:update` | `hourly` | Cotización oficial actual (DolarAPI) → histórico local |
 | `php artisan subscriptions:generate` | `daily` | Cargos de abonos vencidos (idempotente) |
+| `php artisan documents:cleanup-temp` | `daily` | Temporales de captura documental (34B) |
 
 ## Cron en el servidor (etapa posterior — no crear todavía)
 

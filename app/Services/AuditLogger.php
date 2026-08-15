@@ -37,6 +37,17 @@ class AuditLogger
 
         unset($values['password'], $values['remember_token']);
 
+        foreach ($values as $key => $value) {
+            $keyLower = strtolower((string) $key);
+            if (preg_match('/(binary|base64|content|payload|file_contents|image_data)/', $keyLower)) {
+                unset($values[$key]);
+                continue;
+            }
+            if (is_string($value) && strlen($value) > 2000) {
+                $values[$key] = '[omitted:'.strlen($value).' chars]';
+            }
+        }
+
         return $values;
     }
 }

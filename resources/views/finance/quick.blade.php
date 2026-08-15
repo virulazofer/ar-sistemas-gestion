@@ -5,9 +5,12 @@
                 <h1 class="text-xl font-semibold">Carga rápida</h1>
                 <p class="ar-muted text-sm">Ingreso / egreso / transferencia. Concepto = hoja del plan de cuentas.</p>
             </div>
-            <x-page-help topic="movements.quick" />
-        </div>
-    </x-slot>
+            <div class="flex flex-wrap items-center gap-2">
+                @can('documents.create')
+                    <a href="{{ route('documents.capture') }}" class="ar-btn ar-btn-secondary lg:hidden">Capturar documento</a>
+                @endcan
+                <x-page-help topic="movements.quick" />
+            </div>
 
     @php
         $accountsPayload = $accounts->map(fn ($a) => [

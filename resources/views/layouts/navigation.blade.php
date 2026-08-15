@@ -26,6 +26,18 @@
                         <span class="ar-side-label">Cargar movimiento</span>
                     </a>
                 @endcan
+                @can('documents.create')
+                    <a href="{{ route('documents.capture') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('documents.capture') ? 'is-active' : '' }}">
+                        <svg class="ar-side-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h4l2-2h4l2 2h4v12H4V7Z"/><circle cx="12" cy="13" r="3.5"/></svg>
+                        <span class="ar-side-label">Capturar documento</span>
+                    </a>
+                @endcan
+                @can('documents.view')
+                    <a href="{{ route('documents.index') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('documents.index') || request()->routeIs('documents.show') ? 'is-active' : '' }}">
+                        <svg class="ar-side-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h7l5 5v13H7V3Z"/><path d="M14 3v5h5"/></svg>
+                        <span class="ar-side-label">Documentos</span>
+                    </a>
+                @endcan
                 @can('dashboard.view')
                     <a href="{{ route('dashboard.operations') }}" @click="closeDrawer()" class="ar-side-link {{ request()->routeIs('dashboard.operations*') ? 'is-active' : '' }}">
                         <svg class="ar-side-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg>
