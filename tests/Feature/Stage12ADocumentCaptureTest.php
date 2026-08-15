@@ -211,7 +211,8 @@ test('layout no solicita cámara automáticamente', function () {
     $admin = makeAdmin();
     $html = $this->actingAs($admin)->get(route('movements.quick'))->assertOk()->getContent();
     expect($html)->not->toContain('getUserMedia')
-        ->and($html)->toContain('Capturar documento');
+        // UI pública 12A oculta por defecto (documents.show_in_ui=false); la captura sigue por ruta directa.
+        ->and($html)->not->toContain('Capturar documento');
 
     $capture = $this->actingAs($admin)->get(route('documents.capture'))->assertOk()->getContent();
     expect($capture)->toContain('AR Sistemas necesita abrir la cámara')

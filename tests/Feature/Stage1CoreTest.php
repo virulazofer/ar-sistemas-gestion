@@ -197,7 +197,12 @@ test('la sidebar agrupa accesos por area y respeta permisos', function () {
         ->assertSee('>Equipos</span>', false)
         ->assertSee(route('products.index'), false)
         ->assertDontSee('Stock / Unidades')
-        ->assertSee(route('users.index'), false);
+        ->assertSee(route('users.index'), false)
+        // 12A captura documental: sin exposición en sidebar hasta documents.show_in_ui
+        ->assertDontSee('Capturar documento')
+        ->assertDontSee('>Documentos</span>', false)
+        ->assertDontSee(route('documents.capture'), false)
+        ->assertDontSee(route('documents.index'), false);
 
     $equipOnly = makeUserWithPermissions(['dashboard.view', 'equipment.view']);
     $this->actingAs($equipOnly)

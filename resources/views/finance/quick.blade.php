@@ -6,9 +6,11 @@
                 <p class="ar-muted text-sm">Ingreso / egreso / transferencia. Concepto = hoja del plan de cuentas.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-                @can('documents.create')
-                    <a href="{{ route('documents.capture') }}" class="ar-btn ar-btn-secondary lg:hidden">Capturar documento</a>
-                @endcan
+                @if (config('documents.show_in_ui'))
+                    @can('documents.create')
+                        <a href="{{ route('documents.capture') }}" class="ar-btn ar-btn-secondary lg:hidden">Capturar documento</a>
+                    @endcan
+                @endif
                 <x-page-help topic="movements.quick" />
             </div>
 

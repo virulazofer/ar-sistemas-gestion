@@ -8,6 +8,13 @@ return [
     |--------------------------------------------------------------------------
     */
 
+    /*
+     | Exposición temporal en UI pública (sidebar / atajos).
+     | false = 12A queda en código/rutas/storage pero sin menú ni shortcuts.
+     | Reactivar con DOCUMENTS_SHOW_IN_UI=true cuando la captura esté certificada.
+     */
+    'show_in_ui' => (bool) env('DOCUMENTS_SHOW_IN_UI', false),
+
     'max_upload_kb' => (int) env('DOCUMENTS_MAX_UPLOAD_KB', 10240), // 10 MB
 
     'allowed_mimes' => [
