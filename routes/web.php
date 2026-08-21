@@ -49,7 +49,9 @@ Route::get('/', function () {
 });
 
 Route::get('/manifest.webmanifest', function () {
-    $path = public_path('manifest.webmanifest');
+    // Template fuera de public/ para que nginx no sirva el JSON estático
+    // (try_files) y se pueda filtrar el shortcut 12A según config.
+    $path = resource_path('pwa/manifest.webmanifest');
     abort_unless(is_file($path), 404);
 
     $manifest = json_decode((string) file_get_contents($path), true);
@@ -67,7 +69,7 @@ Route::get('/manifest.webmanifest', function () {
 
     return response(json_encode($manifest, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 200, [
         'Content-Type' => 'application/manifest+json; charset=utf-8',
-        'Cache-Control' => 'public, max-age=3600',
+        'Cache-Control' => 'no-cache',
     ]);
 })->name('pwa.manifest');
 

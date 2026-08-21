@@ -64,7 +64,7 @@ test('shell sidebar x-data no se rompe con @js y no filtra JS al DOM', function 
 
 test('service worker cache version bump recovery help overlay', function () {
     $sw = file_get_contents(public_path('sw.js'));
-    expect($sw)->toContain('ar-static-v12a-3-ui-hide')
+    expect($sw)->toContain('ar-static-v12a-4-manifest-dyn')
         ->and($sw)->toContain('skipWaiting')
         ->and($sw)->toContain('clients.claim');
 });

@@ -58,10 +58,14 @@ function makePdfUpload(string $name = 'doc.pdf'): UploadedFile
 }
 
 test('manifest PWA y metadata disponibles', function () {
-    $manifest = json_decode(file_get_contents(public_path('manifest.webmanifest')), true);
+    $manifest = json_decode(file_get_contents(resource_path('pwa/manifest.webmanifest')), true);
     expect($manifest['name'])->toBe('AR Sistemas')
         ->and($manifest['display'])->toBe('standalone')
-        ->and($manifest)->toHaveKeys(['icons', 'shortcuts', 'start_url', 'scope']);
+        ->and($manifest)->toHaveKeys(['icons', 'shortcuts', 'start_url', 'scope'])
+        ->and(collect($manifest['shortcuts'])->pluck('url')->all())->toContain('/documentos/capturar');
+
+    // El template no debe vivir en public/ (nginx try_files lo serviría sin filtrar).
+    expect(is_file(public_path('manifest.webmanifest')))->toBeFalse();
 
     config(['documents.show_in_ui' => false]);
     $served = $this->get('/manifest.webmanifest')->assertOk()
@@ -70,7 +74,9 @@ test('manifest PWA y metadata disponibles', function () {
     expect($served['name'])->toBe('AR Sistemas')
         ->and(collect($served['shortcuts'] ?? [])->pluck('url')->all())
         ->not->toContain('/documentos/capturar')
-        ->and(json_encode($served))->not->toContain('Capturar documento');
+        ->and(json_encode($served))->not->toContain('Capturar documento')
+        ->and(collect($served['shortcuts'] ?? [])->pluck('url')->all())
+        ->toContain('/movimientos/cargar');
 
     config(['documents.show_in_ui' => true]);
     $servedOn = $this->get('/manifest.webmanifest')->assertOk()->json();
