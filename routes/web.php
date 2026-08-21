@@ -52,7 +52,20 @@ Route::get('/manifest.webmanifest', function () {
     $path = public_path('manifest.webmanifest');
     abort_unless(is_file($path), 404);
 
-    return response(file_get_contents($path), 200, [
+    $manifest = json_decode((string) file_get_contents($path), true);
+    abort_unless(is_array($manifest), 500);
+
+    // 12A: atajo "Capturar documento" solo si la UI pública está habilitada.
+    if (! config('documents.show_in_ui') && isset($manifest['shortcuts']) && is_array($manifest['shortcuts'])) {
+        $manifest['shortcuts'] = array_values(array_filter(
+            $manifest['shortcuts'],
+            static fn ($s) => ! is_array($s)
+                || (($s['url'] ?? '') !== '/documentos/capturar'
+                    && ! str_contains((string) ($s['name'] ?? ''), 'Capturar'))
+        ));
+    }
+
+    return response(json_encode($manifest, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 200, [
         'Content-Type' => 'application/manifest+json; charset=utf-8',
         'Cache-Control' => 'public, max-age=3600',
     ]);

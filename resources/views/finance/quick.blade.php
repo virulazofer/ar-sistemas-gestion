@@ -13,6 +13,8 @@
                 @endif
                 <x-page-help topic="movements.quick" />
             </div>
+        </div>
+    </x-slot>
 
     @php
         $accountsPayload = $accounts->map(fn ($a) => [

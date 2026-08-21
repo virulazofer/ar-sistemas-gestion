@@ -2,7 +2,7 @@
  * Cachea SOLO estáticos versionados/seguros.
  * NUNCA cachea auth, finanzas, documentos, APIs ni POST.
  */
-const CACHE_NAME = 'ar-static-v12a-2-help-overlay';
+const CACHE_NAME = 'ar-static-v12a-3-ui-hide';
 const PRECACHE = [
   '/offline.html',
   '/manifest.webmanifest',

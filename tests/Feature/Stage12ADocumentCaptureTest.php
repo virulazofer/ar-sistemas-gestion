@@ -63,8 +63,19 @@ test('manifest PWA y metadata disponibles', function () {
         ->and($manifest['display'])->toBe('standalone')
         ->and($manifest)->toHaveKeys(['icons', 'shortcuts', 'start_url', 'scope']);
 
-    $this->get('/manifest.webmanifest')->assertOk()
-        ->assertHeader('content-type', 'application/manifest+json; charset=utf-8');
+    config(['documents.show_in_ui' => false]);
+    $served = $this->get('/manifest.webmanifest')->assertOk()
+        ->assertHeader('content-type', 'application/manifest+json; charset=utf-8')
+        ->json();
+    expect($served['name'])->toBe('AR Sistemas')
+        ->and(collect($served['shortcuts'] ?? [])->pluck('url')->all())
+        ->not->toContain('/documentos/capturar')
+        ->and(json_encode($served))->not->toContain('Capturar documento');
+
+    config(['documents.show_in_ui' => true]);
+    $servedOn = $this->get('/manifest.webmanifest')->assertOk()->json();
+    expect(collect($servedOn['shortcuts'] ?? [])->pluck('url')->all())
+        ->toContain('/documentos/capturar');
 
     expect(file_exists(public_path('sw.js')))->toBeTrue();
     expect(file_exists(public_path('icons/icon-192.png')))->toBeTrue();
@@ -213,6 +224,13 @@ test('layout no solicita cámara automáticamente', function () {
     expect($html)->not->toContain('getUserMedia')
         // UI pública 12A oculta por defecto (documents.show_in_ui=false); la captura sigue por ruta directa.
         ->and($html)->not->toContain('Capturar documento');
+
+    // Encabezado en <header>, formulario en <main> (regresión: slot header sin cerrar empujaba todo al lateral).
+    expect($html)->toMatch('/<header[\s\S]*?>[\s\S]*Carga rápida[\s\S]*?<\/header>/')
+        ->and($html)->toMatch('/<main[\s\S]*?>[\s\S]*name="type"[\s\S]*?<\/main>/');
+    $headerPos = strpos($html, '>Carga rápida<');
+    $formPos = strpos($html, 'name="type"');
+    expect($headerPos)->toBeInt()->and($formPos)->toBeInt()->and($headerPos)->toBeLessThan($formPos);
 
     $capture = $this->actingAs($admin)->get(route('documents.capture'))->assertOk()->getContent();
     expect($capture)->toContain('AR Sistemas necesita abrir la cámara')
